@@ -214,9 +214,13 @@ def test_mutation_events_have_type_id_time_and_operation_metadata(
         "schema_version": "1.0",
         "status_before": "unregistered",
         "status_after": "active",
+        "revision": "1",
     }
     assert events[1].metadata["status_before"] == "active"
+    assert events[1].metadata["revision"] == "2"
+    assert events[1].metadata["prior_revision"] == "1"
     assert events[2].metadata["status_after"] == "disabled"
+    assert events[2].metadata["revision"] == "2"
     with pytest.raises(TypeError):
         events[0].metadata["status_after"] = "changed"
 

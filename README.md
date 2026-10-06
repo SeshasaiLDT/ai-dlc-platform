@@ -47,3 +47,7 @@ in-memory implementations for tests and local development.
 checks a validated profile's policy and build consistency and accepts injected
 validators for future external resource checks. It runs independently of the
 Registry and does not activate an initiative.
+
+[Initiative configuration versioning](docs/architecture/initiative-versioning.md)
+retains immutable revision history. Rollback appends a new revision while
+preserving previous profiles and lifecycle status.
