@@ -35,4 +35,5 @@ class ToolPermission(StrEnum):
 class AdminPermission(StrEnum):
     INITIATIVE_MEMBERSHIP_MANAGE = "initiative.membership.manage"
     INITIATIVE_POLICY_MANAGE = "initiative.policy.manage"
+    INITIATIVE_APPROVAL_MANAGE = "initiative.approval.manage"
     PLATFORM_MANAGE = "platform.manage"
