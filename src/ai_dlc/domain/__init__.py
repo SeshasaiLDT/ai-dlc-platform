@@ -1,0 +1,1 @@
+"""Platform domain models."""
