@@ -88,3 +88,6 @@ backend application calls.
 [Centralized authorization service](docs/architecture/authorization-service.md)
 defines audited server-side allow/deny decisions for capabilities, tools,
 administration, and logical resource targets.
+
+[Tool-permission policy](docs/architecture/tool-permission-policy.md)
+defines initiative-specific operation rules layered after base tool authorization.
