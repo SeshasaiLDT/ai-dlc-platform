@@ -1,0 +1,54 @@
+schema_version: "1.0"
+initiative:
+  id: field-operations
+  name: Field Operations
+  description: Operational runbooks and incident coordination
+teams:
+  - id: operations
+    name: Operations
+ownership:
+  primary_team_id: operations
+integrations:
+  jira:
+    enabled: false
+  servicenow:
+    enabled: true
+    assignment_groups: [Field Support, Incident Coordination]
+    scopes: [incident, change]
+  git:
+    enabled: true
+    provider: gitlab
+    repositories:
+      - id: operations-runbooks
+        owner: example-operations
+        name: runbooks
+        default_branch: stable
+        access: read_only
+knowledge:
+  sources:
+    - id: incident-history
+      type: incident
+      enabled: true
+      resource_id: operations-incidents
+    - id: runbooks
+      type: documentation
+      enabled: true
+      resource_id: field-runbooks
+build_profiles:
+  - id: runbook-checks
+    repository_id: operations-runbooks
+    language: markdown
+    working_directory: .
+    test_command: make check-docs
+policies:
+  code_analysis:
+    enabled: true
+  code_generation:
+    enabled: false
+  git_write:
+    enabled: false
+  servicenow_write:
+    enabled: true
+    human_approval_required: true
+  jira_write:
+    enabled: false

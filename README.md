@@ -31,3 +31,9 @@ A new initiative must be onboardable without changing shared orchestrator, harne
 The UI is maintained separately in `ai-dlc-ui`.
 
 This repository intentionally keeps all backend and agent code together while preserving independent deployment boundaries for each AgentCore runtime.
+
+## Initiative configuration
+
+The first implemented contract is the versioned Initiative Profile schema. See
+[Initiative Profiles](configs/initiatives/README.md) for examples, validation,
+and JSON Schema export.
