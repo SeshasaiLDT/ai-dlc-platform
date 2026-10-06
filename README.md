@@ -94,3 +94,7 @@ defines initiative-specific operation rules layered after base tool authorizatio
 
 [Human approval policy engine](docs/architecture/human-approval.md)
 defines durable approval state, authorized human decisions, and the execution gate.
+
+[Authorization regression tests](docs/testing/authorization-regression.md)
+exercise cross-initiative isolation, tool delegation, approval replay, and audit
+failure behavior in the full CI test suite.
