@@ -37,3 +37,8 @@ This repository intentionally keeps all backend and agent code together while pr
 The first implemented contract is the versioned Initiative Profile schema. See
 [Initiative Profiles](configs/initiatives/README.md) for examples, validation,
 and JSON Schema export.
+
+The [Initiative Registry](docs/architecture/initiative-registry.md) is the
+application boundary for creating, reading, updating, listing, and disabling
+registered profiles. Its current storage and mutation-event adapters are
+in-memory implementations for tests and local development.
