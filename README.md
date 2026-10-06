@@ -55,3 +55,7 @@ preserving previous profiles and lifecycle status.
 [Initiative onboarding](docs/architecture/initiative-onboarding.md) composes
 profile loading, readiness validation, and Registry creation. It rejects
 readiness errors before creating an active registration and revision 1.
+
+[Atlas Travel](docs/architecture/sample-initiative.md) is the canonical
+synthetic initiative fixture for future integration tests and demos. It is
+separate from the smaller Initiative Profile schema examples.
