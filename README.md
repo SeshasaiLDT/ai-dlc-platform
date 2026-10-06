@@ -80,3 +80,7 @@ separate from the smaller Initiative Profile schema examples.
 [Enterprise identity and initiative RBAC](docs/architecture/identity-rbac.md)
 defines provider-neutral principals, memberships, explicit grants, and logical
 scope narrowing for one selected initiative.
+
+[Authentication integration boundary](docs/architecture/authentication-boundary.md)
+defines credential validation and provider-neutral Principal propagation for
+backend application calls.
