@@ -7,6 +7,7 @@ from .decisions import (
     CapabilityAction,
     JiraProjectTarget,
     KnowledgeSourceTarget,
+    PlatformAuthorizationRequest,
     RepositoryTarget,
     ToolAction,
 )
@@ -18,7 +19,7 @@ from .models import (
     RolePolicy,
     ScopeRestriction,
 )
-from .ports import AuthorizationAuditSink, MembershipRepository
+from .ports import AuthorizationAuditSink, MembershipRepository, PlatformAdminRepository
 from .resolution import resolve_authorization_context
 from .service import AuthorizationService
 
@@ -37,6 +38,8 @@ __all__ = [
     "KnowledgeSourceTarget",
     "LogicalScopes",
     "MembershipRepository",
+    "PlatformAdminRepository",
+    "PlatformAuthorizationRequest",
     "ResolvedAuthorizationContext",
     "RoleGrant",
     "RolePolicy",

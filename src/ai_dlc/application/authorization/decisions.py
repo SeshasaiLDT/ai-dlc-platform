@@ -108,11 +108,25 @@ class AuthorizationRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class PlatformAuthorizationRequest:
+    """Platform administration has no selected initiative or logical target."""
+
+    principal: Principal
+    action: AdminAction = AdminAction(AdminPermission.PLATFORM_MANAGE)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.principal, Principal):
+            raise TypeError("principal must be a Principal")
+        if self.action != AdminAction(AdminPermission.PLATFORM_MANAGE):
+            raise ValueError("platform requests require platform.manage")
+
+
+@dataclass(frozen=True, slots=True)
 class AuthorizationDecision:
     decision_id: str
     occurred_at: datetime
     principal_id: str
-    initiative_id: str
+    initiative_id: str | None
     action: AuthorizationAction
     target: AuthorizationTarget | None
     allowed: bool
@@ -131,7 +145,7 @@ class AuthorizationAuditEvent:
     decision_id: str
     occurred_at: datetime
     principal_id: str
-    initiative_id: str
+    initiative_id: str | None
     action: AuthorizationAction
     target: AuthorizationTarget | None
     allowed: bool

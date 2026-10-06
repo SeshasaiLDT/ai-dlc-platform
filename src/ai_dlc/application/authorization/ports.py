@@ -18,3 +18,8 @@ class MembershipRepository(Protocol):
 class AuthorizationAuditSink(Protocol):
     def record(self, event: AuthorizationAuditEvent) -> None:
         """Persist one immutable audit-safe decision event or raise."""
+
+
+class PlatformAdminRepository(Protocol):
+    def is_platform_admin(self, principal_id: str) -> bool:
+        """Look up global platform-admin assignment independently of memberships."""

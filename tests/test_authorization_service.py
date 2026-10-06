@@ -10,6 +10,7 @@ from ai_dlc.adapters.authentication import DeterministicTestProvider
 from ai_dlc.adapters.authorization import (
     InMemoryAuthorizationAuditSink,
     InMemoryMembershipRepository,
+    InMemoryPlatformAdminRepository,
 )
 from ai_dlc.application.authentication import AuthenticationService, BearerCredential
 from ai_dlc.application.authorization import (
@@ -22,6 +23,7 @@ from ai_dlc.application.authorization import (
     CapabilityAction,
     JiraProjectTarget,
     KnowledgeSourceTarget,
+    PlatformAuthorizationRequest,
     RepositoryTarget,
     RoleGrant,
     RolePolicy,
@@ -148,18 +150,159 @@ def test_admin_permissions_remain_separate(principal, policy, profile) -> None:
         initiative_service.evaluate(
             request(principal, AdminAction(AdminPermission.PLATFORM_MANAGE)), profile=profile
         ).reason
-        is AuthorizationReason.ADMIN_PERMISSION_NOT_GRANTED
+        is AuthorizationReason.INVALID_REQUEST
     )
     platform_service, _ = setup_service(principal, policy, (Role.PLATFORM_ADMIN,))
-    assert platform_service.evaluate(
-        request(principal, AdminAction(AdminPermission.PLATFORM_MANAGE)), profile=profile
-    ).allowed
+    assert (
+        platform_service.evaluate(
+            request(principal, AdminAction(AdminPermission.PLATFORM_MANAGE)), profile=profile
+        ).reason
+        is AuthorizationReason.INVALID_REQUEST
+    )
     assert (
         platform_service.evaluate(
             request(principal, CapabilityAction(Capability.INVESTIGATION)), profile=profile
         ).reason
         is AuthorizationReason.CAPABILITY_NOT_GRANTED
     )
+
+
+def test_platform_admin_without_any_initiative_membership_is_allowed_and_audited(
+    principal, policy
+) -> None:
+    sink = InMemoryAuthorizationAuditSink()
+    service = AuthorizationService(
+        InMemoryMembershipRepository(),
+        policy,
+        sink,
+        platform_admins=InMemoryPlatformAdminRepository(frozenset({principal.subject_id})),
+        clock=lambda: NOW,
+        decision_id_factory=lambda: "global-decision",
+    )
+    decision = service.require(PlatformAuthorizationRequest(principal))
+    assert decision.allowed
+    assert decision.reason is AuthorizationReason.ALLOWED
+    assert decision.initiative_id is None
+    assert decision.initiative_revision is None
+    assert sink.events[0].initiative_id is None
+    assert sink.events[0].decision_id == "global-decision"
+    assert sink.events[0].principal_id == principal.subject_id
+    assert "private@example.test" not in repr(sink.events[0])
+
+
+def test_platform_admin_assignment_does_not_grant_initiative_capability_or_tool(
+    principal, policy, profile
+) -> None:
+    service = AuthorizationService(
+        InMemoryMembershipRepository(),
+        policy,
+        InMemoryAuthorizationAuditSink(),
+        platform_admins=InMemoryPlatformAdminRepository(frozenset({principal.subject_id})),
+    )
+    assert service.evaluate(PlatformAuthorizationRequest(principal)).allowed
+    assert (
+        service.evaluate(
+            request(principal, CapabilityAction(Capability.INVESTIGATION)), profile=profile
+        ).reason
+        is AuthorizationReason.MEMBERSHIP_NOT_FOUND
+    )
+    assert (
+        service.evaluate(
+            request(principal, ToolAction(ToolPermission.JIRA_READ), JiraProjectTarget("TRAVEL")),
+            profile=profile,
+        ).reason
+        is AuthorizationReason.MEMBERSHIP_NOT_FOUND
+    )
+
+
+def test_initiative_admin_still_requires_selected_membership(principal, policy, profile) -> None:
+    action = request(principal, AdminAction(AdminPermission.INITIATIVE_MEMBERSHIP_MANAGE))
+    missing = AuthorizationService(
+        InMemoryMembershipRepository(), policy, InMemoryAuthorizationAuditSink()
+    )
+    assert (
+        missing.evaluate(action, profile=profile).reason is AuthorizationReason.MEMBERSHIP_NOT_FOUND
+    )
+    disabled, _ = setup_service(principal, policy, (Role.INITIATIVE_ADMIN,), enabled=False)
+    assert (
+        disabled.evaluate(action, profile=profile).reason is AuthorizationReason.MEMBERSHIP_DISABLED
+    )
+
+
+def test_initiative_member_has_no_platform_authority(principal, policy) -> None:
+    service, sink = setup_service(principal, policy, (Role.ANALYST,))
+    decision = service.evaluate(PlatformAuthorizationRequest(principal))
+    assert decision.reason is AuthorizationReason.ADMIN_PERMISSION_NOT_GRANTED
+    assert not decision.allowed
+    assert sink.events[0].initiative_id is None
+
+
+def test_platform_role_on_membership_is_not_global_assignment(principal, policy) -> None:
+    service, _ = setup_service(principal, policy, (Role.PLATFORM_ADMIN,))
+    assert (
+        service.evaluate(PlatformAuthorizationRequest(principal)).reason
+        is AuthorizationReason.ADMIN_PERMISSION_NOT_GRANTED
+    )
+
+
+def test_global_assignment_without_policy_grant_denies(principal) -> None:
+    service = AuthorizationService(
+        InMemoryMembershipRepository(),
+        RolePolicy(),
+        InMemoryAuthorizationAuditSink(),
+        platform_admins=InMemoryPlatformAdminRepository(frozenset({principal.subject_id})),
+    )
+    assert (
+        service.evaluate(PlatformAuthorizationRequest(principal)).reason
+        is AuthorizationReason.ADMIN_PERMISSION_NOT_GRANTED
+    )
+
+
+def test_ambiguous_platform_assignment_denies(principal, policy) -> None:
+    class AmbiguousRepository:
+        def is_platform_admin(self, principal_id):
+            return "yes"
+
+    service = AuthorizationService(
+        InMemoryMembershipRepository(),
+        policy,
+        InMemoryAuthorizationAuditSink(),
+        platform_admins=AmbiguousRepository(),
+    )
+    assert (
+        service.evaluate(PlatformAuthorizationRequest(principal)).reason
+        is AuthorizationReason.ADMIN_PERMISSION_NOT_GRANTED
+    )
+
+
+def test_platform_request_rejects_initiative_scope(principal, policy, profile) -> None:
+    service = AuthorizationService(
+        InMemoryMembershipRepository(),
+        policy,
+        InMemoryAuthorizationAuditSink(),
+        platform_admins=InMemoryPlatformAdminRepository(frozenset({principal.subject_id})),
+    )
+    with pytest.raises(ValueError, match="no initiative scope"):
+        service.evaluate(PlatformAuthorizationRequest(principal), profile=profile)
+    with pytest.raises(ValueError, match="platform.manage"):
+        PlatformAuthorizationRequest(
+            principal, AdminAction(AdminPermission.INITIATIVE_MEMBERSHIP_MANAGE)
+        )
+
+
+def test_platform_audit_failure_stops_operation(principal, policy) -> None:
+    class BrokenSink:
+        def record(self, event):
+            raise OSError("backend unavailable")
+
+    service = AuthorizationService(
+        InMemoryMembershipRepository(),
+        policy,
+        BrokenSink(),
+        platform_admins=InMemoryPlatformAdminRepository(frozenset({principal.subject_id})),
+    )
+    with pytest.raises(AuthorizationAuditError):
+        service.require(PlatformAuthorizationRequest(principal))
 
 
 def test_missing_disabled_and_unconfigured_membership_deny(principal, policy, profile) -> None:

@@ -10,14 +10,21 @@ Authenticated Principal + selected Initiative + typed operation + logical target
                          AuthorizationService
                                   ↓
                        audited ALLOW or DENY
+
+Principal + platform.manage (no Initiative)
+                  ↓
+         AuthorizationService
+                  ↓
+         audited ALLOW or DENY
 ```
 
 Authentication (AIDLC-26) answers *who are you?* and returns a `Principal`.
-Authorization answers *may this principal perform this operation in this
-initiative?* The service takes the current trusted Initiative Profile, injected
-role policy and membership repository, and optional trusted scope restriction.
-It calls AIDLC-25 `resolve_authorization_context` rather than repeating
-membership, grant aggregation, or scope intersection.
+Authorization answers *may this principal perform this operation?* For
+initiative-scoped requests, the service takes the current trusted Initiative
+Profile, injected role policy and membership repository, and optional trusted
+scope restriction. It calls AIDLC-25 `resolve_authorization_context` rather
+than repeating membership, grant aggregation, or scope intersection. Platform
+requests use a separate global assignment repository and no Initiative Profile.
 
 ## Centralized server-side enforcement
 
@@ -55,10 +62,14 @@ to AIDLC-28.
 ## Administration
 
 `AdminAction` checks the exact `AdminPermission`. Initiative membership/policy
-administration and platform administration are distinct. Neither admin grant
-implies capability execution or tool access. The current contract requires an
-enabled membership in the selected initiative even for `platform.manage`; a
-future platform-wide entrypoint would need an explicit, separate trust model.
+administration requires enabled membership in the selected initiative.
+`platform.manage` instead uses `PlatformAuthorizationRequest`, which has no
+initiative ID or profile. A separate `PlatformAdminRepository` supplies global
+platform-admin assignment, and `RolePolicy` must explicitly grant
+`platform.manage` to that role. A platform role recorded on an initiative
+membership cannot authorize a platform request. Neither admin grant implies
+capability execution or tool access; those still require selected-initiative
+membership and explicit grants.
 
 ## Logical resource scope
 
@@ -75,8 +86,9 @@ with detailed policies deferred to later stories.
 Each successful evaluation records one immutable `AuthorizationAuditEvent`
 through `AuthorizationAuditSink`, for both allows and denials. Decision and
 event carry a generated decision ID, UTC timestamp, stable principal ID,
-initiative ID, typed action, logical target, allow/deny flag, reason code, and
-optional Initiative Profile revision supplied by the trusted caller. They omit
+initiative ID (absent for platform decisions), typed action, logical target,
+allow/deny flag, reason code, and optional Initiative Profile revision supplied
+by the trusted caller. They omit
 email, display name, raw credentials, provider claims, and physical resources.
 An in-memory sink supports deterministic tests. Durable audit persistence is
 later work.
