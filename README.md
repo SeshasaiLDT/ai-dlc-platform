@@ -84,3 +84,7 @@ scope narrowing for one selected initiative.
 [Authentication integration boundary](docs/architecture/authentication-boundary.md)
 defines credential validation and provider-neutral Principal propagation for
 backend application calls.
+
+[Centralized authorization service](docs/architecture/authorization-service.md)
+defines audited server-side allow/deny decisions for capabilities, tools,
+administration, and logical resource targets.
