@@ -5,8 +5,18 @@ from .errors import (
     InitiativeIdentityMismatchError,
     InitiativeNotFoundError,
     InitiativeRegistryError,
+    InitiativeRevisionConflictError,
+    InitiativeRevisionNotFoundError,
 )
-from .models import InitiativeStatus, RegisteredInitiative, RegistryEventType, RegistryMutationEvent
+from .models import (
+    ConfigurationRevision,
+    ConfigurationRevisionReason,
+    InitiativeStatus,
+    RegisteredInitiative,
+    RegistryEventType,
+    RegistryMutationEvent,
+)
+from .ports import InitiativeRevisionRepository
 from .registry import InitiativeRegistry
 
 __all__ = [
@@ -15,7 +25,12 @@ __all__ = [
     "InitiativeNotFoundError",
     "InitiativeRegistry",
     "InitiativeRegistryError",
+    "InitiativeRevisionConflictError",
+    "InitiativeRevisionNotFoundError",
+    "InitiativeRevisionRepository",
     "InitiativeStatus",
+    "ConfigurationRevision",
+    "ConfigurationRevisionReason",
     "RegisteredInitiative",
     "RegistryEventType",
     "RegistryMutationEvent",
