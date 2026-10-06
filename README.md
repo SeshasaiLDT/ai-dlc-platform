@@ -19,18 +19,35 @@ A new initiative must be onboardable without changing shared orchestrator, harne
 
 ## Planned runtime
 
-- AWS Bedrock AgentCore Runtime for agents
-- A2A for independent agent-to-agent communication
-- MCP for governed enterprise tool access where appropriate
-- Amazon RDS for PostgreSQL
-- pgvector for semantic retrieval
-- DynamoDB only for workloads that justify it after measurement
+- AWS Bedrock for model inference
+- AWS Bedrock AgentCore Runtime for independently deployable agents
+- AgentCore Gateway for governed enterprise tool access where appropriate
+- Amazon DynamoDB for operational platform state
+- Amazon S3 for canonical artifacts and static UI assets
+- Amazon RDS for PostgreSQL + pgvector for semantic retrieval
+- Amazon ECR for agent container images
+- Amazon CloudFront for frontend delivery
+- Amazon API Gateway + Lambda as the preferred initial control-plane/API hosting model
+- Route 53 / ACM for DNS and TLS where a custom domain is used
+- IAM, Secrets Manager, KMS, CloudWatch, CloudTrail, and VPC controls for security and operations
+
+ECS/Fargate remains an optional compute choice for workloads that materially benefit from persistent container execution. The React/Vite SPA should default to S3 + CloudFront rather than EC2/Fargate.
 
 ## Repository boundaries
 
 The UI is maintained separately in `ai-dlc-ui`.
 
 This repository intentionally keeps all backend and agent code together while preserving independent deployment boundaries for each AgentCore runtime.
+
+## Architecture
+
+[Identity, initiative, and resource resolution](docs/architecture/resource-resolution.md)
+defines how authenticated users resolve to authorized initiatives and how logical
+Jira/knowledge resources resolve to environment-specific physical resources.
+
+[AWS deployment topology](docs/architecture/aws-deployment-topology.md) defines
+the preferred AWS service boundaries and identifies which services are core
+versus workload-dependent.
 
 ## Initiative configuration
 
