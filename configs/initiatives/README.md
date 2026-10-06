@@ -50,3 +50,8 @@ policies it needs. Validate the file before passing its typed profile to the
 [Initiative Registry](../../docs/architecture/initiative-registry.md). Adding
 such a file must not require changes to shared
 orchestrator, harness, or capability-agent source code.
+
+The [Atlas Travel sample](samples/atlas-travel.yaml) is a stable synthetic
+integration/demo fixture, distinct from the `examples/` schema demonstrations.
+Its intended use and synthetic identifiers are documented in the
+[sample initiative guide](../../docs/architecture/sample-initiative.md).

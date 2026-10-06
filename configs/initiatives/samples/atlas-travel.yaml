@@ -1,0 +1,94 @@
+schema_version: "1.0"
+
+initiative:
+  id: atlas-travel
+  name: Atlas Travel
+  description: >-
+    Fictional trip-planning product with saved trips, shared itineraries,
+    weather forecasts, user accounts, and notifications.
+
+teams:
+  - id: atlas-engineering
+    name: Atlas Engineering
+  - id: atlas-product
+    name: Atlas Product
+
+ownership:
+  primary_team_id: atlas-engineering
+  supporting_team_ids: [atlas-product]
+
+integrations:
+  jira:
+    enabled: true
+    projects: [ATLAS]
+  servicenow:
+    enabled: false
+  git:
+    enabled: true
+    provider: github
+    repositories:
+      - id: atlas-travel-web
+        owner: example-org
+        name: atlas-travel-web
+        default_branch: main
+        access: read_write
+      - id: atlas-travel-api
+        owner: example-org
+        name: atlas-travel-api
+        default_branch: main
+        access: read_write
+
+knowledge:
+  sources:
+    - id: architecture
+      type: documentation
+      enabled: true
+      resource_id: atlas-architecture-docs
+      description: Synthetic architecture documentation identifier
+    - id: product-requirements
+      type: documentation
+      enabled: true
+      resource_id: atlas-product-requirements
+      description: Synthetic product requirements identifier
+    - id: codebase
+      type: repository
+      enabled: true
+      resource_id: atlas-code-knowledge
+      description: Synthetic repository knowledge identifier
+
+build_profiles:
+  - id: api-python
+    repository_id: atlas-travel-api
+    language: python
+    runtime: "3.12"
+    working_directory: .
+    install_command: pip install -r requirements.txt
+    test_command: pytest
+  - id: web-typescript
+    repository_id: atlas-travel-web
+    language: typescript
+    runtime: node-22
+    working_directory: .
+    install_command: npm ci
+    build_command: npm run build
+    test_command: npm test
+
+policies:
+  code_analysis:
+    enabled: true
+  code_generation:
+    enabled: true
+  git_write:
+    enabled: true
+    human_approval_required: true
+  jira_write:
+    enabled: false
+  servicenow_write:
+    enabled: false
+
+defaults:
+  model_roles:
+    routing: routing
+    reasoning: standard_reasoning
+    complex_reasoning: deep_reasoning
+    reviewer: independent_reviewer
