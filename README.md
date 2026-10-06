@@ -76,3 +76,7 @@ readiness errors before creating an active registration and revision 1.
 [Atlas Travel](docs/architecture/sample-initiative.md) is the canonical
 synthetic initiative fixture for future integration tests and demos. It is
 separate from the smaller Initiative Profile schema examples.
+
+[Enterprise identity and initiative RBAC](docs/architecture/identity-rbac.md)
+defines provider-neutral principals, memberships, explicit grants, and logical
+scope narrowing for one selected initiative.
