@@ -1,0 +1,77 @@
+schema_version: "1.0"
+initiative:
+  id: travel-platform
+  name: Travel Platform
+  description: APIs and web services for trip planning
+teams:
+  - id: travel-engineering
+    name: Travel Engineering
+  - id: travel-quality
+    name: Travel Quality
+ownership:
+  primary_team_id: travel-engineering
+  supporting_team_ids: [travel-quality]
+integrations:
+  jira:
+    enabled: true
+    projects: [TRAVEL, JOURNEY]
+  servicenow:
+    enabled: false
+  git:
+    enabled: true
+    provider: github
+    repositories:
+      - id: travel-api
+        owner: example-org
+        name: travel-api
+        default_branch: main
+        access: read_write
+      - id: travel-web
+        owner: example-org
+        name: travel-web
+        default_branch: main
+        access: read_only
+knowledge:
+  sources:
+    - id: architecture
+      type: documentation
+      enabled: true
+      resource_id: travel-architecture
+    - id: codebase
+      type: repository
+      enabled: true
+      resource_id: travel-api
+build_profiles:
+  - id: python-api
+    repository_id: travel-api
+    language: python
+    runtime: "3.12"
+    working_directory: .
+    install_command: pip install -r requirements.txt
+    test_command: pytest
+  - id: web-client
+    repository_id: travel-web
+    language: typescript
+    runtime: node-22
+    working_directory: .
+    install_command: npm ci
+    build_command: npm run build
+    test_command: npm test
+policies:
+  code_analysis:
+    enabled: true
+  code_generation:
+    enabled: true
+  git_write:
+    enabled: true
+    human_approval_required: true
+  servicenow_write:
+    enabled: false
+  jira_write:
+    enabled: false
+defaults:
+  model_roles:
+    routing: routing
+    reasoning: standard_reasoning
+    complex_reasoning: deep_reasoning
+    reviewer: independent_reviewer
