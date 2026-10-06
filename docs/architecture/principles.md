@@ -60,3 +60,6 @@ These principles constrain all future AI-DLC design and implementation decisions
 
 17. **A new initiative must not require shared-source changes**  
     This is the primary architecture acceptance test. If onboarding a valid new initiative requires changing the shared orchestrator, harness, or reusable capability agents, the design is still coupled.
+
+18. **Logical resources are stable; physical bindings are replaceable**  
+    Agents and Initiative Profiles refer to logical Jira scopes, repositories, knowledge sources, artifact types, and tool capabilities. Environment-specific services resolve these to physical Jira sites, S3 locations, pgvector instances/tables/namespaces, or other infrastructure. Physical topology must be changeable without modifying agent source code or initiative business configuration.
