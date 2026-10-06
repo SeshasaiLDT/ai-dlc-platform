@@ -51,3 +51,7 @@ Registry and does not activate an initiative.
 [Initiative configuration versioning](docs/architecture/initiative-versioning.md)
 retains immutable revision history. Rollback appends a new revision while
 preserving previous profiles and lifecycle status.
+
+[Initiative onboarding](docs/architecture/initiative-onboarding.md) composes
+profile loading, readiness validation, and Registry creation. It rejects
+readiness errors before creating an active registration and revision 1.
