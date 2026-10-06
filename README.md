@@ -42,3 +42,8 @@ The [Initiative Registry](docs/architecture/initiative-registry.md) is the
 application boundary for creating, reading, updating, listing, and disabling
 registered profiles. Its current storage and mutation-event adapters are
 in-memory implementations for tests and local development.
+
+[Initiative readiness validation](docs/architecture/initiative-validation.md)
+checks a validated profile's policy and build consistency and accepts injected
+validators for future external resource checks. It runs independently of the
+Registry and does not activate an initiative.
