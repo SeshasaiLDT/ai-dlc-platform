@@ -46,6 +46,7 @@ integration requirements.
 
 To onboard another initiative, add a YAML file with a new stable initiative ID,
 its teams and primary owner, and only the integrations, sources, profiles, and
-policies it needs. Validate the file before registering it in the future
-Initiative Registry. Adding such a file must not require changes to shared
+policies it needs. Validate the file before passing its typed profile to the
+[Initiative Registry](../../docs/architecture/initiative-registry.md). Adding
+such a file must not require changes to shared
 orchestrator, harness, or capability-agent source code.
