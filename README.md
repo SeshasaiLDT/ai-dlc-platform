@@ -111,6 +111,10 @@ results, Resource Binding use, and the MCP-facing operation catalog.
 defines logical repository tools for remote metadata, branches, diffs, and pull
 requests, with provider selection and separate local workspace boundaries.
 
+[Local code workspace toolset](docs/architecture/local-workspace-toolset.md)
+defines task-scoped checkout, status, diff, patch, build, test, commit, and
+cleanup operations with a trusted handoff to remote Git.
+
 [Human approval policy engine](docs/architecture/human-approval.md)
 defines durable approval state, authorized human decisions, and the execution gate.
 

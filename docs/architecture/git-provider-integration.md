@@ -116,6 +116,6 @@ and repository scope semantics differ. A later Shared Agent Harness / SDK
 story can extract only the stable common execution steps; this story does not
 refactor unrelated integrations.
 
-AIDLC-35 owns local workspace Git and trusted commit production. AIDLC-36
-owns MCP SDK/AgentCore Gateway registration and live managed connections.
+AIDLC-35 provides [local workspace Git and trusted commit production](local-workspace-toolset.md).
+AIDLC-36 owns MCP SDK/AgentCore Gateway registration and live managed connections.
 AIDLC-37 owns broader provider contract tests and live adapter verification.
