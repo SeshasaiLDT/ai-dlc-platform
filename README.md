@@ -103,6 +103,10 @@ direct API, and local execution strategy.
 defines the implemented Jira request/result models, project-scope gates,
 Resource Binding use, provider port, and MCP-facing operation catalog.
 
+[Governed ServiceNow MCP integration](docs/architecture/servicenow-mcp-integration.md)
+defines incident/request tool schemas, scoped permission gates, normalized
+results, Resource Binding use, and the MCP-facing operation catalog.
+
 [Human approval policy engine](docs/architecture/human-approval.md)
 defines durable approval state, authorized human decisions, and the execution gate.
 

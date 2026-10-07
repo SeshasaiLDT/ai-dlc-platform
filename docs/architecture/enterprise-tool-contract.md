@@ -185,11 +185,11 @@ unless explicitly added with its own policy and contract in a later story.
 
 `tool_id=servicenow` uses `ServiceNowOperation` and the existing
 `ServiceNowTarget.scope_id`. The selected Profile's enabled scopes and exact
-tool rules constrain access; the base service currently checks the read/write
-grant, while AIDLC-28 checks the ServiceNow logical scope. AIDLC-33 must
-enforce approved incident/request record types and any assignment-group or
-field restrictions at the adapter boundary. Arbitrary table names and encoded
-provider queries are not public business arguments.
+tool rules constrain access; base authorization checks the read/write grant.
+The [AIDLC-33 ServiceNow contract](servicenow-mcp-integration.md) enforces
+incident/request record types, logical scope, assignment-group restrictions,
+and a bounded write-field surface. Arbitrary table names and encoded provider
+queries are not public business arguments.
 
 | Operation | Business arguments | Normalized result | Gate |
 | --- | --- | --- | --- |
@@ -199,8 +199,8 @@ provider queries are not public business arguments.
 | `UPDATE_RECORD` | Scoped ID/type, permitted field patch | Updated ID, number, state | `servicenow.write` + exact update policy/approval |
 | `ADD_COMMENT` | Scoped ID/type, text and approved channel (comment/work note) | Entry ID, record ID, timestamp | `servicenow.write` + exact comment policy/approval |
 
-The scope-to-record-type mapping and assignment group checks must be trusted
-configuration/policy, not model-selected table routing. Instance URL,
+The initial scope-to-record-type mapping accepts `incident` and `request` only;
+assignment-group checks use the selected Profile. Instance URL,
 connection, and authentication stay below the adapter. `DELETE_RECORD` is
 not part of the initial surface despite its policy enum entry.
 
@@ -232,7 +232,8 @@ request translation; capability agents use the same logical contract.
 
 This document defines the common boundary. AIDLC-32 implements the
 [governed Jira application and MCP-facing contract](jira-mcp-integration.md).
-AIDLC-33 implements ServiceNow; AIDLC-34 implements remote
+AIDLC-33 implements the [governed ServiceNow contract](servicenow-mcp-integration.md);
+AIDLC-34 implements remote
 Git provider operations; AIDLC-35 implements isolated local workspace tools;
 AIDLC-36 can wire the governed runtime/MCP gateway. AIDLC-100 supplies the
 Resource Binding Registry contract and in-memory resolver; durable storage and
