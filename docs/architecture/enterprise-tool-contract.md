@@ -221,8 +221,8 @@ registered tool domains and adapters:
 dispatched to a Git provider merely because it appears in `GitOperation`.
 The AIDLC-34 remote integration adds `READ_PR` and `LIST_BRANCHES` with explicit
 `git.read` policy; see the [Git provider contract](git-provider-integration.md).
-Local status/diff/build/test require explicit governed local operations and
-workspace containment controls in AIDLC-35. A local diff and remote diff have
+Local status/diff/build/test use the [AIDLC-35 local workspace toolset](local-workspace-toolset.md)
+with task isolation and workspace containment. A local diff and remote diff have
 different tool IDs and result provenance. Remote writes require the selected
 logical repository, branch policy, `git.write`, exact operation policy, and
 approval when required. The provider adapter owns GitHub/Bitbucket/GitLab
@@ -234,7 +234,7 @@ This document defines the common boundary. AIDLC-32 implements the
 [governed Jira application and MCP-facing contract](jira-mcp-integration.md).
 AIDLC-33 implements the [governed ServiceNow contract](servicenow-mcp-integration.md);
 AIDLC-34 implements [remote Git provider operations](git-provider-integration.md);
-AIDLC-35 implements isolated local workspace tools;
+AIDLC-35 implements [isolated local workspace tools](local-workspace-toolset.md);
 AIDLC-36 can wire the governed runtime/MCP gateway. AIDLC-100 supplies the
 Resource Binding Registry contract and in-memory resolver; durable storage and
 managed connection lookup remain deployment work. Future integration stories
