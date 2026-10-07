@@ -21,3 +21,7 @@ Each ADR must include:
 
 ## Naming
 `ADR-NNN-short-title.md`
+
+## Decisions
+
+- [ADR-004: Hybrid enterprise tool and MCP boundary](ADR-004-mcp-tool-boundary.md)

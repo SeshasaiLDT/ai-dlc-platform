@@ -12,7 +12,7 @@ User
 → A2A
 → Capability Agents
 → Shared Agent Harness
-→ Models / MCP Tools / Knowledge Retrieval / Local Workspaces
+→ Models / Governed Tools / Knowledge Retrieval / Local Workspaces
 → Artifacts / Results
 → User
 
@@ -49,7 +49,14 @@ The control plane resolves:
 5. authorization/policy restrictions for that user
 6. environment-specific physical resource bindings
 
-For example, one user may be a member of both a POS initiative and an AI Center of Excellence initiative. Selecting the POS initiative may expose NEWPOS/DCTZ Jira scopes and POS knowledge sources, while selecting the AI initiative exposes different scopes. Agents receive the resolved context; they do not contain user-to-board mappings.
+For example, one user may be a member of two initiatives with different Jira
+scopes and knowledge sources. Agents receive only the authorized logical context
+needed for the selected task; trusted tool infrastructure retains binding and
+credential details. Agents do not contain user-to-project mappings.
+
+The [enterprise tool contract](enterprise-tool-contract.md) defines the separate
+agent request and trusted execution context, normalized results, and MCP/direct/
+local execution boundary.
 
 ## Resource bindings
 
