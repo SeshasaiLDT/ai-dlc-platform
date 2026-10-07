@@ -15,7 +15,7 @@ This contract composes the existing `Principal`, `InitiativeProfile`,
 `ResolvedAuthorizationContext`/`LogicalScopes`, `ToolPolicyRequest`, typed
 `JiraOperation`/`GitOperation`/`ServiceNowOperation`, and approval gate. It does
 not replace their authorization rules. The Resource Binding Registry in
-AIDLC-100 will implement the logical-to-physical lookup described here.
+AIDLC-100 implements the logical-to-physical lookup described here.
 
 ```mermaid
 flowchart LR
@@ -57,7 +57,7 @@ cannot be promoted into trusted context by matching a field name.
 | `initiative_id`, Profile revision | Never as authority | Selected initiative and current/pinned Registry revision |
 | `workspace_id`, `task_id` | Never as authority | Server-verified ownership and initiative association, when relevant |
 | `allowed_scopes`, permission, policy/approval decisions | Never | Recomputed by AIDLC-27/28/29 at execution boundary |
-| `environment`, binding | Never | Deployment context and AIDLC-100 resolver |
+| `environment`, binding | Never | Deployment context and Resource Binding Registry |
 | `correlation_id`, trace/audit lineage | Never as authority | Trusted entrypoint; propagated to adapters |
 | `deadline`, cancellation | May request a shorter deadline | Server caps deadline and propagates cancellation |
 
@@ -233,7 +233,8 @@ request translation; capability agents use the same logical contract.
 This story defines the boundary only. AIDLC-32 implements Jira adapter and
 operation schemas; AIDLC-33 implements ServiceNow; AIDLC-34 implements remote
 Git provider operations; AIDLC-35 implements isolated local workspace tools;
-AIDLC-36 can wire the governed runtime/MCP gateway; AIDLC-100 implements
-environment Resource Binding persistence and resolution. Those stories should
+AIDLC-36 can wire the governed runtime/MCP gateway. AIDLC-100 supplies the
+Resource Binding Registry contract and in-memory resolver; durable storage and
+managed connection lookup remain deployment work. Future integration stories should
 add executable request/result models at the tool entrypoint once it exists,
 and test schema rejection, scope immutability, normalization, and redaction.

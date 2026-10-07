@@ -33,6 +33,10 @@ def resolve_authorization_context(
         knowledge_source_ids=frozenset(
             source.id for source in profile.knowledge.sources if source.enabled
         ),
+        servicenow_scopes=frozenset(profile.integrations.servicenow.scopes)
+        if profile.integrations.servicenow.enabled
+        else frozenset(),
+        artifact_store_ids=frozenset(store.id for store in profile.artifacts.stores),
     )
     return ResolvedAuthorizationContext(
         principal=principal,
