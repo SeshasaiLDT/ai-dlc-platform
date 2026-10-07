@@ -43,7 +43,8 @@ This repository intentionally keeps all backend and agent code together while pr
 
 [Identity, initiative, and resource resolution](docs/architecture/resource-resolution.md)
 defines how authenticated users resolve to authorized initiatives and how logical
-Jira/knowledge resources resolve to environment-specific physical resources.
+Jira, knowledge, Git, ServiceNow, and artifact resources resolve to
+environment-specific physical resources through the Resource Binding Registry.
 
 [AWS deployment topology](docs/architecture/aws-deployment-topology.md) defines
 the preferred AWS service boundaries and identifies which services are core

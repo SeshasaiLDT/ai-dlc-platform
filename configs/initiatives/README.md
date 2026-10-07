@@ -3,7 +3,8 @@
 An Initiative Profile is the versioned, human-authored contract for onboarding a
 software product or operational domain to AI-DLC. It declares identity and team
 ownership, integration scopes, repositories, knowledge source identifiers,
-build/test commands, initiative policy settings, and logical model-role defaults.
+optional logical artifact-store identifiers, build/test commands, initiative
+policy settings, and logical model-role defaults.
 Shared platform code reads the same contract for every initiative. See the
 [travel platform](examples/travel-platform.yaml) and
 [field operations](examples/field-operations.yaml) profiles for different shapes.
@@ -17,6 +18,11 @@ Repository `access` describes an initiative's intended integration scope; a
 `read_write` repository may still have Git writes disabled by policy. This is
 deliberate because permissions can be narrowed without changing repository
 registration.
+
+An `artifacts.stores` entry declares only a stable logical `id`. The
+[Resource Binding Registry](../../docs/architecture/resource-resolution.md)
+maps it to an environment-specific bucket alias and contained prefix after
+authorization. The Profile never contains a bucket or storage credential.
 
 Version `1.0` is the only supported version. The loader rejects other versions
 with an explicit error. New optional fields can be added compatibly; removing or

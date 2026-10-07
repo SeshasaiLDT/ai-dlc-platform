@@ -29,9 +29,17 @@ class LogicalScopes:
     jira_projects: frozenset[str] = frozenset()
     repository_ids: frozenset[str] = frozenset()
     knowledge_source_ids: frozenset[str] = frozenset()
+    servicenow_scopes: frozenset[str] = frozenset()
+    artifact_store_ids: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
-        for name in ("jira_projects", "repository_ids", "knowledge_source_ids"):
+        for name in (
+            "jira_projects",
+            "repository_ids",
+            "knowledge_source_ids",
+            "servicenow_scopes",
+            "artifact_store_ids",
+        ):
             values = frozenset(getattr(self, name))
             if any(not isinstance(item, str) or not item.strip() for item in values):
                 raise ValueError(f"{name} must contain nonblank logical identifiers")
@@ -48,6 +56,12 @@ class LogicalScopes:
             knowledge_source_ids=self.knowledge_source_ids & restriction.knowledge_source_ids
             if restriction.knowledge_source_ids is not None
             else self.knowledge_source_ids,
+            servicenow_scopes=self.servicenow_scopes & restriction.servicenow_scopes
+            if restriction.servicenow_scopes is not None
+            else self.servicenow_scopes,
+            artifact_store_ids=self.artifact_store_ids & restriction.artifact_store_ids
+            if restriction.artifact_store_ids is not None
+            else self.artifact_store_ids,
         )
 
 
@@ -58,9 +72,17 @@ class ScopeRestriction:
     jira_projects: frozenset[str] | None = None
     repository_ids: frozenset[str] | None = None
     knowledge_source_ids: frozenset[str] | None = None
+    servicenow_scopes: frozenset[str] | None = None
+    artifact_store_ids: frozenset[str] | None = None
 
     def __post_init__(self) -> None:
-        for name in ("jira_projects", "repository_ids", "knowledge_source_ids"):
+        for name in (
+            "jira_projects",
+            "repository_ids",
+            "knowledge_source_ids",
+            "servicenow_scopes",
+            "artifact_store_ids",
+        ):
             values = getattr(self, name)
             if values is not None:
                 normalized = frozenset(values)
@@ -137,7 +159,13 @@ class ResolvedAuthorizationContext:
             self.allowed_scopes, LogicalScopes
         ):
             raise TypeError("scopes must be LogicalScopes")
-        for name in ("jira_projects", "repository_ids", "knowledge_source_ids"):
+        for name in (
+            "jira_projects",
+            "repository_ids",
+            "knowledge_source_ids",
+            "servicenow_scopes",
+            "artifact_store_ids",
+        ):
             if not getattr(self.allowed_scopes, name) <= getattr(self.configured_scopes, name):
                 raise ValueError(f"allowed {name} exceed Initiative Profile scope")
 

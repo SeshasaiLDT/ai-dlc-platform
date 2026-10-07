@@ -138,6 +138,21 @@ class Knowledge(ProfileModel):
         return _unique_ids(value, "knowledge source")
 
 
+class ArtifactStore(ProfileModel):
+    """Logical artifact destination; physical storage belongs to Resource Bindings."""
+
+    id: Identifier
+
+
+class Artifacts(ProfileModel):
+    stores: tuple[ArtifactStore, ...] = ()
+
+    @field_validator("stores")
+    @classmethod
+    def unique_stores(cls, value: tuple[ArtifactStore, ...]) -> tuple[ArtifactStore, ...]:
+        return _unique_ids(value, "artifact store")
+
+
 class BuildProfile(ProfileModel):
     id: Identifier
     repository_id: Identifier | None = None
@@ -192,6 +207,7 @@ class InitiativeProfile(ProfileModel):
     ownership: Ownership
     integrations: Integrations = Field(default_factory=Integrations)
     knowledge: Knowledge = Field(default_factory=Knowledge)
+    artifacts: Artifacts = Field(default_factory=Artifacts)
     build_profiles: tuple[BuildProfile, ...] = ()
     policies: Policies = Field(default_factory=Policies)
     defaults: Defaults = Field(default_factory=Defaults)
