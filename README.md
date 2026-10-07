@@ -99,6 +99,10 @@ Jira/ServiceNow operations, and separate remote Git and local workspace domains.
 [ADR-004](docs/adr/ADR-004-mcp-tool-boundary.md) records the hybrid MCP,
 direct API, and local execution strategy.
 
+[Governed Jira MCP integration](docs/architecture/jira-mcp-integration.md)
+defines the implemented Jira request/result models, project-scope gates,
+Resource Binding use, provider port, and MCP-facing operation catalog.
+
 [Human approval policy engine](docs/architecture/human-approval.md)
 defines durable approval state, authorized human decisions, and the execution gate.
 
