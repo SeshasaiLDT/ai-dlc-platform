@@ -92,6 +92,12 @@ administration, and logical resource targets.
 [Tool-permission policy](docs/architecture/tool-permission-policy.md)
 defines initiative-specific operation rules layered after base tool authorization.
 
+[Enterprise tool contract](docs/architecture/enterprise-tool-contract.md)
+defines logical tool requests, trusted context injection, normalized results,
+Jira/ServiceNow operations, and separate remote Git and local workspace domains.
+[ADR-004](docs/adr/ADR-004-mcp-tool-boundary.md) records the hybrid MCP,
+direct API, and local execution strategy.
+
 [Human approval policy engine](docs/architecture/human-approval.md)
 defines durable approval state, authorized human decisions, and the execution gate.
 

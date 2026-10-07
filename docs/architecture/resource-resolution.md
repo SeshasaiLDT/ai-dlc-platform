@@ -70,15 +70,17 @@ This does not contain Jira credentials.
 
 An environment binding selects the approved Jira connection/site.
 
-At runtime the Jira tool receives a resolved context such as:
+At runtime the trusted tool layer receives logical context such as:
 
 ```text
 initiative_id = pos
 allowed_projects = [NEWPOS, DCTZ]
-connection_alias = corporate-jira
 principal = user-123
 permissions = [jira.read]
 ```
+
+The environment-specific connection alias is selected by Resource Binding
+resolution after authorization. It is not an agent argument or prompt value.
 
 If a user belongs to multiple initiatives, the selected workspace determines which initiative scopes are active. Membership or policy may further narrow those scopes.
 
@@ -139,17 +141,14 @@ Company Documents pgvector
   └── Team C docs
 ```
 
-The same agent request remains:
+The same agent request remains a logical source selection:
 
 ```text
-retrieve(
-  initiative_id="pos",
-  source_ids=["pos-code", "design-documents"],
-  query="..."
-)
+retrieve(source_ids=["pos-code", "design-documents"], query="...")
 ```
 
-Only resource bindings change.
+The selected initiative ID is injected by the trusted platform. Only resource
+bindings change when physical topology changes.
 
 ## Isolation requirements
 
