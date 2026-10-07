@@ -30,7 +30,9 @@ class JiraOperation(StrEnum):
 class GitOperation(StrEnum):
     READ_REPOSITORY = "read_repository"
     READ_BRANCH = "read_branch"
+    LIST_BRANCHES = "list_branches"
     READ_DIFF = "read_diff"
+    READ_PR = "read_pr"
     CREATE_BRANCH = "create_branch"
     COMMIT = "commit"
     PUSH = "push"
@@ -60,7 +62,9 @@ _RISK: dict[tuple[ToolKind, str], ToolOperationRisk] = {
     (ToolKind.JIRA, JiraOperation.DELETE_ISSUE): ToolOperationRisk.DESTRUCTIVE,
     (ToolKind.GIT, GitOperation.READ_REPOSITORY): ToolOperationRisk.READ,
     (ToolKind.GIT, GitOperation.READ_BRANCH): ToolOperationRisk.READ,
+    (ToolKind.GIT, GitOperation.LIST_BRANCHES): ToolOperationRisk.READ,
     (ToolKind.GIT, GitOperation.READ_DIFF): ToolOperationRisk.READ,
+    (ToolKind.GIT, GitOperation.READ_PR): ToolOperationRisk.READ,
     (ToolKind.GIT, GitOperation.CREATE_BRANCH): ToolOperationRisk.WRITE,
     (ToolKind.GIT, GitOperation.COMMIT): ToolOperationRisk.WRITE,
     (ToolKind.GIT, GitOperation.PUSH): ToolOperationRisk.WRITE,

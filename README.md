@@ -107,6 +107,10 @@ Resource Binding use, provider port, and MCP-facing operation catalog.
 defines incident/request tool schemas, scoped permission gates, normalized
 results, Resource Binding use, and the MCP-facing operation catalog.
 
+[Governed remote Git provider integration](docs/architecture/git-provider-integration.md)
+defines logical repository tools for remote metadata, branches, diffs, and pull
+requests, with provider selection and separate local workspace boundaries.
+
 [Human approval policy engine](docs/architecture/human-approval.md)
 defines durable approval state, authorized human decisions, and the execution gate.
 

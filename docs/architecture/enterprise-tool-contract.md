@@ -219,8 +219,8 @@ registered tool domains and adapters:
 `CREATE_PR`, and `UPDATE_PR` describe remote permissions when invoked through
 `git.remote`. `COMMIT` describes a local workspace action and cannot be
 dispatched to a Git provider merely because it appears in `GitOperation`.
-The present enum has no PR-read operation; AIDLC-34 must add one with explicit
-`git.read` policy before exposing remote PR metadata.
+The AIDLC-34 remote integration adds `READ_PR` and `LIST_BRANCHES` with explicit
+`git.read` policy; see the [Git provider contract](git-provider-integration.md).
 Local status/diff/build/test require explicit governed local operations and
 workspace containment controls in AIDLC-35. A local diff and remote diff have
 different tool IDs and result provenance. Remote writes require the selected
@@ -233,8 +233,8 @@ request translation; capability agents use the same logical contract.
 This document defines the common boundary. AIDLC-32 implements the
 [governed Jira application and MCP-facing contract](jira-mcp-integration.md).
 AIDLC-33 implements the [governed ServiceNow contract](servicenow-mcp-integration.md);
-AIDLC-34 implements remote
-Git provider operations; AIDLC-35 implements isolated local workspace tools;
+AIDLC-34 implements [remote Git provider operations](git-provider-integration.md);
+AIDLC-35 implements isolated local workspace tools;
 AIDLC-36 can wire the governed runtime/MCP gateway. AIDLC-100 supplies the
 Resource Binding Registry contract and in-memory resolver; durable storage and
 managed connection lookup remain deployment work. Future integration stories
