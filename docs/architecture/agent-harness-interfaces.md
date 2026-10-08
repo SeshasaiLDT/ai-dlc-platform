@@ -1,6 +1,6 @@
 # Shared Agent Harness interfaces
 
-The public Python interface version is **1.2.0** (`INTERFACE_VERSION`); the initial interface version was 1.0.0. It currently ships inside the `ai-dlc-platform` distribution, whose version remains 0.1.0. The harness is a library imported by independently deployed agents. It does not run a central execution service or define an A2A wire schema.
+The public Python interface version is **1.3.0** (`INTERFACE_VERSION`); the initial interface version was 1.0.0. It currently ships inside the `ai-dlc-platform` distribution, whose version remains 0.1.0. The harness is a library imported by independently deployed agents. It does not run a central execution service or define an A2A wire schema.
 
 `AgentLifecycle` owns initialize, execute, and shutdown. `AgentContext` is immutable, trusted in-process state: request, correlation, session, and trace IDs; the existing `ResolvedAuthorizationContext`; an optional aware deadline; cancellation state; and optional JSON metadata. Its `principal` property comes only from the resolved authorization snapshot. The authenticated runtime creates this context after authorization. Agent input must never supply or replace the principal, authorization snapshot, scopes, approval decisions, or trusted gateway references.
 
@@ -97,3 +97,45 @@ result = await validator.parse(raw_model_json, context=trusted_context)
 Optional `ArtifactReference` values carry only logical `store_id`, `artifact_id`, and small JSON metadata. An optional artifact metadata schema validates them before inclusion; malformed references and inline payload fields fail closed. Storage, resolution, and access authorization stay with trusted artifact services. Repair is disabled by default and requires both an explicit maximum of 1–3 attempts and an injected async callback (for example, an adapter around `ModelProvider`). Every candidate is revalidated. Cancellation and the execution deadline stop local repair work, but cancellation cannot prove remote model work stopped. Artifact failures are not sent to repair because changing model text cannot fix references. Telemetry uses the existing `TelemetryProvider`: event names include a stable schema ID, metrics use fixed names, the trusted context carries correlation and trace IDs, and errors contain only category and schema information. Telemetry exceptions do not change the validation outcome. This layer does not choose prompts, authorize artifact access, store artifacts, or migrate agents.
 
 Version 1.2.0 adds `StructuredOutputValidator` and `ArtifactReference` without changing existing harness ports or result fields. It does not alter the A2A protocol version.
+
+## Context and token budgeting (AIDLC-43)
+
+`ContextAssembler` turns caller-supplied `ContextSegment` values into a deterministic, budgeted prompt input. Segments are inputs to prompt assembly, not a second execution context: identity and initiative come only from the trusted `AgentContext` passed to `assemble`. The assembler does no retrieval, summarization, model calls, or persistence.
+
+**Categories and authority.** `system_instructions`, `task_instructions`, `initiative_context`, `retrieved_evidence`, `conversation_history`, `supporting_metadata`. Authority is derived from category and cannot be configured: system/task are `instruction`, initiative context is `trusted_context`, everything else is `untrusted_data`. Instruction segments are always required and never truncatable. Evidence cannot be required and must carry a `SourceReference` with an `initiative_id`. Each segment is rendered in a delimited block naming its category and authority; untrusted text has `<<` neutralized so it cannot forge delimiters. Callers must authorize and initiative-filter retrieval *before* building evidence segments; the assembler additionally excludes any segment whose source initiative differs from the context's (`initiative_mismatch`, fail-closed for required ones) and exact duplicates of evidence (same source and normalized content).
+
+**Prioritization.** Three separate concepts: *authority* (category-derived), *relevance* (0–1, orders evidence at equal priority), and *allocation priority* (0–1000, lower is allocated first within a category). `ContextPolicy.category_order` reorders only the four non-instruction categories; instructions always rank first, so untrusted content cannot outrank them. Default: initiative, evidence, history, metadata. Ties keep input order. Required segments are admitted first; optional ones follow in rank order. Output order is category order, caller order within a category (so history stays chronological), and relevance order for evidence.
+
+**Budget.** `ModelCapability` is injected by deployment (`model_id`, `max_context_tokens`, `reserved_output_tokens`, `reserved_tool_schema_tokens`, `reserved_protocol_tokens`); no model limits are built in. `available_input_tokens = max_context - output - tool/schema - protocol`; configurations leaving no input are rejected. `assemble(..., tool_schema_tokens=n)` overrides the tool reservation for one call. `ContextPolicy` adds `fixed_overhead_tokens` and `per_segment_overhead_tokens` for message framing. The advertised window is not assumed to be usable input.
+
+**Counting.** `TokenCounter.count(text, model_id=...)` returns `TokenCount(tokens, exact)`. Inject a model-specific exact counter where one exists. `EstimatingTokenCounter` (characters per token and a safety factor, both configurable) always reports `exact=False`. Counting covers the rendered text including delimiters and citations. Any inexact count makes the report `counting_method="estimated"` and `provider_validation_required=True`; set `require_exact_counting` to fail instead. An estimate does not guarantee provider acceptance: validate provider-side where supported.
+
+**Truncation.** Only optional segments with `truncatable=True` can be shortened, and only when `truncation_enabled`. Allocation is greedy in rank order: higher-priority segments are admitted whole first, the first optional segment that does not fit is truncated (or dropped as `over_budget`), and later, smaller segments may still fill the remainder. Text is cut at a character boundary and ends with ` [truncated]`; JSON arrays/objects drop trailing items/keys so the result stays valid JSON, and scalars are never truncated. Truncated blocks carry `truncated="true"`; source references stay in the header. A result below `min_truncated_tokens` is dropped instead. `AssembledSegment` records original and retained token counts. If required segments do not fit, `assemble` returns a `BudgetFailure` (`to_execution_error()` gives a sanitized `ExecutionError`).
+
+**Telemetry.** Through the existing `TelemetryProvider`: event `context_budget.assembled|failed.model.<id>.counting.<method>`, metrics `context_budget.{available_input_tokens,reserved_tokens,used_tokens,utilization,included_segments,excluded_segments,truncated_segments,overflow_events,estimated_counting}`, and `record_error` on failure. No prompt text, evidence, citations, or identity is emitted, and telemetry errors are swallowed.
+
+```python
+assembler = ContextAssembler(
+    ModelCapability(
+        model_id="deployment-model", max_context_tokens=32_000,
+        reserved_output_tokens=2_000, reserved_tool_schema_tokens=1_000,
+    ),
+    counter=EstimatingTokenCounter(),
+)
+result = assembler.assemble(
+    [
+        ContextSegment("sys", ContextCategory.SYSTEM_INSTRUCTIONS, trusted_prompt),
+        ContextSegment("task", ContextCategory.TASK_INSTRUCTIONS, task_prompt),
+        ContextSegment(
+            "doc-1", ContextCategory.RETRIEVED_EVIDENCE, text, relevance=0.9, truncatable=True,
+            source=SourceReference("doc-1", initiative_id=ctx.initiative_id),
+        ),
+    ],
+    context=ctx,
+)
+if isinstance(result, BudgetFailure):
+    return ExecutionResult(...error=result.to_execution_error()...)
+prompt = result.render()
+```
+
+**Limitations.** Token sums are additive per segment and assume counters are monotonic in length; real tokenizers may differ at boundaries. Only top-level JSON arrays/objects are truncated. No summarization, nested JSON pruning, or provider-side validation is performed here. Version 1.3.0 adds these types without changing existing ports, results, or A2A wire contracts.

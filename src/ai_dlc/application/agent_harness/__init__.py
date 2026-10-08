@@ -2,6 +2,24 @@
 
 from .a2a import A2AClient, A2AServerAdapter, ConfiguredAgentDirectory, build_a2a_handler
 from .context import create_agent_context
+from .context_budget import (
+    AssembledContext,
+    AssembledSegment,
+    BudgetFailure,
+    BudgetReport,
+    ContentFormat,
+    ContextAssembler,
+    ContextCategory,
+    ContextPolicy,
+    ContextSegment,
+    EstimatingTokenCounter,
+    ExclusionRecord,
+    InstructionAuthority,
+    ModelCapability,
+    SourceReference,
+    TokenCount,
+    TokenCounter,
+)
 from .lifecycle import LifecycleRunner
 from .mcp import McpClient, RetryPolicy, ToolDiscoveryError
 from .models import (
@@ -27,6 +45,22 @@ from .ports import (
 from .structured_output import ArtifactReference, StructuredOutputValidator
 
 __all__ = [
+    "AssembledContext",
+    "AssembledSegment",
+    "BudgetFailure",
+    "BudgetReport",
+    "ContentFormat",
+    "ContextAssembler",
+    "ContextCategory",
+    "ContextPolicy",
+    "ContextSegment",
+    "EstimatingTokenCounter",
+    "ExclusionRecord",
+    "InstructionAuthority",
+    "ModelCapability",
+    "SourceReference",
+    "TokenCount",
+    "TokenCounter",
     "A2AClient",
     "A2AServerAdapter",
     "INTERFACE_VERSION",
