@@ -16,6 +16,7 @@ from pydantic import JsonValue
 
 from .models import AgentContext, ExecutionError, ExecutionResult, ExecutionStatus, Invocation
 from .ports import ToolProvider
+from .resilience import RetryPolicy, backoff_delay
 
 T = TypeVar("T")
 
@@ -70,21 +71,6 @@ def _local_references_only(value: object) -> bool:
     elif isinstance(value, list):
         return all(_local_references_only(item) for item in value)
     return True
-
-
-@dataclass(frozen=True, slots=True)
-class RetryPolicy:
-    max_attempts: int = 1
-    base_delay_seconds: float = 0.05
-    max_delay_seconds: float = 0.5
-
-    def __post_init__(self) -> None:
-        if type(self.max_attempts) is not int or not 1 <= self.max_attempts <= 10:
-            raise ValueError("max_attempts must be between 1 and 10")
-        _positive(self.base_delay_seconds, "base_delay_seconds")
-        _positive(self.max_delay_seconds, "max_delay_seconds")
-        if self.base_delay_seconds > self.max_delay_seconds:
-            raise ValueError("base_delay_seconds exceeds max_delay_seconds")
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,10 +186,7 @@ class McpClient:
                 or attempt + 1 >= self._retry.max_attempts
             ):
                 return result
-            delay = min(
-                self._retry.max_delay_seconds,
-                self._retry.base_delay_seconds * 2**attempt,
-            )
+            delay = backoff_delay(self._retry, attempt)
             remaining = self._remaining(context)
             if remaining is not None and remaining <= delay:
                 return result
