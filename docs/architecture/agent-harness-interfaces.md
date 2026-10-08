@@ -12,8 +12,12 @@ These are structural Python `Protocol`s. An agent can implement only the ports i
 
 ```python
 from ai_dlc.application.agent_harness import (
-    AgentContext, ExecutionResult, ExecutionStatus, Invocation,
+    AgentContext,
+    ExecutionResult,
+    ExecutionStatus,
+    Invocation,
 )
+
 
 class EchoAgent:
     async def initialize(self) -> None:
