@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -15,8 +16,20 @@ from ai_dlc.application.approval import ApprovalStatus
 from ai_dlc.application.authorization import ResolvedAuthorizationContext
 from ai_dlc.domain.identity import Principal
 
-INTERFACE_VERSION = "1.0.0"
+INTERFACE_VERSION = "1.1.0"
 _JSON_OBJECT = TypeAdapter(dict[str, JsonValue])
+
+type FrozenJsonValue = (
+    str | int | float | bool | None | tuple[FrozenJsonValue, ...] | Mapping[str, FrozenJsonValue]
+)
+
+
+def _freeze_json(value: JsonValue) -> FrozenJsonValue:
+    if isinstance(value, dict):
+        return MappingProxyType({key: _freeze_json(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return tuple(_freeze_json(item) for item in value)
+    return value
 
 
 def _json_object(value: dict[str, JsonValue]) -> dict[str, JsonValue]:
@@ -69,15 +82,16 @@ class ExecutionResult(ContractModel):
     status: ExecutionStatus
     correlation_id: str
     trace_id: str
+    request_id: str | None = None
     output: dict[str, JsonValue] | None = None
     error: ExecutionError | None = None
     metadata: dict[str, JsonValue] | None = None
 
-    @field_validator("correlation_id", "trace_id")
+    @field_validator("correlation_id", "trace_id", "request_id")
     @classmethod
-    def nonblank_id(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("trace identifiers must be nonblank")
+    def nonblank_id(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("result identifiers must be nonblank")
         return value
 
     @field_validator("output", "metadata")
@@ -111,6 +125,8 @@ class AgentContext:
     deadline: datetime | None = None
     cancelled: bool = False
     metadata: Mapping[str, JsonValue] = field(default_factory=dict)
+    task_id: str | None = None
+    cancellation_event: asyncio.Event | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         for name in ("request_id", "correlation_id", "session_id", "trace_id"):
@@ -127,18 +143,36 @@ class AgentContext:
             raise ValueError("deadline must be timezone-aware")
         if type(self.cancelled) is not bool:
             raise TypeError("cancelled must be a bool")
+        if self.task_id is not None and (
+            not isinstance(self.task_id, str) or not self.task_id.strip()
+        ):
+            raise ValueError("task_id must be nonblank")
+        if self.cancellation_event is not None and not isinstance(
+            self.cancellation_event, asyncio.Event
+        ):
+            raise TypeError("cancellation_event must be an asyncio.Event")
         if not isinstance(self.metadata, Mapping):
             raise TypeError("metadata must be a JSON object")
         metadata = _JSON_OBJECT.validate_python(dict(self.metadata), strict=True)
         object.__setattr__(
             self,
             "metadata",
-            MappingProxyType(json.loads(json.dumps(metadata, allow_nan=False))),
+            _freeze_json(json.loads(json.dumps(metadata, allow_nan=False))),
         )
 
     @property
     def principal(self) -> Principal:
         return self.authorization.principal
+
+    @property
+    def initiative_id(self) -> str:
+        return self.authorization.initiative_id
+
+    @property
+    def cancellation_requested(self) -> bool:
+        return self.cancelled or (
+            self.cancellation_event is not None and self.cancellation_event.is_set()
+        )
 
 
 class ApprovalIntent(ContractModel):
