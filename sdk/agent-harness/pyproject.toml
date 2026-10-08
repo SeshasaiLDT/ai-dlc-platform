@@ -1,0 +1,29 @@
+# Build configuration for the ai-dlc-agent-harness distribution.
+# It is built from a staged copy of the platform sources by build_sdk.py, so the platform
+# tree remains the single authoritative implementation. Do not build this file in place.
+[build-system]
+requires = ["setuptools>=75,<82"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-dlc-agent-harness"
+version = "0.1.0"
+description = "Shared Agent Harness SDK for independently deployed AI-DLC agents"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.12,<3",
+  "jsonschema>=4.23,<5",
+]
+
+[project.optional-dependencies]
+# A2A client/server layer (lazy-loaded by ai_dlc.application.agent_harness).
+a2a = [
+  "a2a-sdk>=1.2,<1.3",
+  "httpx>=0.28,<1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["ai_dlc*"]
+namespaces = true

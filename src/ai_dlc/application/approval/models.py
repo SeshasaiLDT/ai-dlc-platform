@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import datetime
-from enum import StrEnum
 
 from ai_dlc.application.authorization import JiraProjectTarget
 from ai_dlc.application.tool_policy import (
@@ -18,12 +17,7 @@ from ai_dlc.application.tool_policy import (
 )
 from ai_dlc.application.tool_policy.models import ToolTarget
 from ai_dlc.application.tool_policy.operations import ToolOperation, operation_risk, tool_kind
-
-
-class ApprovalStatus(StrEnum):
-    PENDING = "pending"
-    APPROVED = "approved"
-    REJECTED = "rejected"
+from ai_dlc.domain.approval import ApprovalStatus
 
 
 @dataclass(frozen=True, slots=True)

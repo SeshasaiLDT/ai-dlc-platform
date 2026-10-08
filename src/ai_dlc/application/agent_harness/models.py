@@ -12,8 +12,8 @@ from types import MappingProxyType
 
 from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter, field_validator, model_validator
 
-from ai_dlc.application.approval import ApprovalStatus
-from ai_dlc.application.authorization import ResolvedAuthorizationContext
+from ai_dlc.domain.approval import ApprovalStatus
+from ai_dlc.domain.authorization import ResolvedAuthorizationContext
 from ai_dlc.domain.identity import Principal
 
 INTERFACE_VERSION = "1.4.0"
