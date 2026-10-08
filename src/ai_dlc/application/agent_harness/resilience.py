@@ -271,6 +271,11 @@ class IdempotencyStore(Protocol):
 
     Records are scoped by ``(initiative_id, idempotency_key)``. Implementations must make
     ``begin`` atomic; only an adapter with cross-process atomicity gives cross-process guarantees.
+
+    Conflict contract for every state, including FAILED: if a record exists and
+    ``same_operation(record.identity, identity)`` is false, ``begin`` must return
+    ``(existing, False)`` without modifying the record. Only a matching FAILED record may be
+    re-opened, and its original identity is preserved.
     """
 
     async def begin(self, identity: OperationIdentity) -> tuple[OperationRecord, bool]:
@@ -293,10 +298,14 @@ class InMemoryIdempotencyStore:
         async with self._lock:
             key = (identity.initiative_id, identity.idempotency_key)
             existing = self._records.get(key)
-            if existing is not None and existing.state is not OperationState.FAILED:
+            if existing is not None and (
+                existing.state is not OperationState.FAILED
+                or not same_operation(existing.identity, identity)
+            ):
                 return existing, False
+            original = existing.identity if existing is not None else identity
             attempts = existing.attempts if existing is not None else 0
-            created = OperationRecord(identity, OperationState.IN_PROGRESS, None, attempts + 1)
+            created = OperationRecord(original, OperationState.IN_PROGRESS, None, attempts + 1)
             self._records[key] = created
             return created, True
 
@@ -319,14 +328,21 @@ class ResumeAction(StrEnum):
     CONFLICT = "conflict"
 
 
+def same_operation(recorded: OperationIdentity, incoming: OperationIdentity) -> bool:
+    """Same logical operation: key, scope, category and payload fingerprint all match."""
+    return (
+        recorded.idempotency_key == incoming.idempotency_key
+        and recorded.initiative_id == incoming.initiative_id
+        and recorded.task_id == incoming.task_id
+        and recorded.category is incoming.category
+        and recorded.fingerprint == incoming.fingerprint
+    )
+
+
 def resume_action(record: OperationRecord, identity: OperationIdentity) -> ResumeAction:
     """Pure decision from recorded state. It grants no authority: replay re-enters the
     governed operation, which re-checks authorization and approval."""
-    if (
-        record.identity.fingerprint != identity.fingerprint
-        or record.identity.initiative_id != identity.initiative_id
-        or record.identity.task_id != identity.task_id
-    ):
+    if not same_operation(record.identity, identity):
         return ResumeAction.CONFLICT
     return {
         OperationState.COMPLETED: ResumeAction.SKIP_COMPLETED,

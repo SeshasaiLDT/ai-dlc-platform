@@ -548,3 +548,56 @@ async def test_mcp_client_uses_shared_retry_policy() -> None:
     assert McpRetryPolicy is RetryPolicy
     assert RetryPolicy().max_attempts == 1 and RetryPolicy().jitter == 0
     McpClient((object(),), retry_policy=FAST)
+
+
+@sync
+async def test_failed_record_reopens_only_for_matching_fingerprint() -> None:
+    c = ctx()
+    store = InMemoryIdempotencyStore()
+    original = identity(c, payload={"a": 1})
+    await store.begin(original)
+    await store.record(original, OperationState.FAILED)
+    ex = executor(store=store)
+    op = Script(c, "ok")
+    result = await run(ex, op, spec=IDEM, identity=identity(c, payload={"a": 1}))
+    assert result.status is ExecutionStatus.SUCCEEDED and len(op.seen) == 1
+
+
+@sync
+async def test_failed_record_with_different_fingerprint_is_conflict_and_preserved() -> None:
+    c = ctx()
+    store = InMemoryIdempotencyStore()
+    original = identity(c, payload={"a": 1})
+    await store.begin(original)
+    await store.record(original, OperationState.FAILED)
+    op = Script(c, "ok")
+    result = await run(executor(store=store), op, spec=IDEM, identity=identity(c, payload={"a": 2}))
+    assert result.error.code == "idempotency_conflict" and not op.seen  # never dispatched
+    record, created = await store.begin(identity(c, payload={"a": 3}))  # read-only conflict
+    assert created is False and record.identity == original
+    assert record.state is OperationState.FAILED and record.attempts == 1
+    reopened, created = await store.begin(original)  # original can still legitimately reopen
+    assert created is True and reopened.identity == original
+
+
+@sync
+async def test_concurrent_conflicting_fingerprints_admit_exactly_one() -> None:
+    c = ctx()
+    store = InMemoryIdempotencyStore()
+    seed = identity(c, payload={"a": 0})
+    await store.begin(seed)
+    await store.record(seed, OperationState.FAILED)
+    ex = executor(store=store)
+    ops = [Script(c, "ok") for _ in range(6)]
+    results = await asyncio.gather(
+        *(
+            run(ex, op, spec=IDEM, identity=identity(c, payload={"a": n % 3}))
+            for n, op in enumerate(ops)
+        )
+    )
+    dispatched = [n for n, op in enumerate(ops) if op.seen]
+    assert all(ops[n].seen for n in dispatched) and len({n % 3 for n in dispatched}) == 1
+    assert all(n % 3 == 0 for n in dispatched)  # only the original fingerprint may run
+    assert all(r.error.code == "idempotency_conflict" for n, r in enumerate(results) if n % 3)
+    record, created = await store.begin(identity(c, payload={"a": 9}))
+    assert not created and record.identity.fingerprint == seed.fingerprint
