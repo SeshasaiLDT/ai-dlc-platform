@@ -536,7 +536,8 @@ def test_no_model_a2a_classifier_or_registry_dependencies() -> None:
         "bedrock",
         "classify(",
     )
-    for path in package.glob("*.py"):
+    # the deterministic modules only; the opt-in classifier (AIDLC-49) is the sole model caller
+    for path in (package / "models.py", package / "router.py"):
         text = path.read_text()
         for word in forbidden:
             assert word not in text, (path.name, word)
