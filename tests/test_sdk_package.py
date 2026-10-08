@@ -59,7 +59,7 @@ def test_artifacts_are_versioned_independently(artifacts: dict[str, Path]) -> No
     assert platform["name"] == "ai-dlc-platform" and platform["version"] == "0.1.0"
     from ai_dlc.application.agent_harness import INTERFACE_VERSION
 
-    assert INTERFACE_VERSION == "1.4.0"  # SDK version and interface version are independent
+    assert INTERFACE_VERSION == "1.5.0"  # SDK version and interface version are independent
 
 
 def test_wheel_contents_include_boundary_and_exclude_everything_else(
@@ -157,7 +157,8 @@ def test_standalone_install_imports_and_runs_reference_agent(
     probe = """
 import importlib.util, json, sys
 import ai_dlc.application.agent_harness as h
-assert h.INTERFACE_VERSION == "1.4.0"
+assert h.INTERFACE_VERSION == "1.5.0"
+assert len(h.RoleProfiles.defaults().profiles) == 4
 for name in ("ai_dlc.application.authorization", "ai_dlc.application.approval",
              "ai_dlc.application.gateway", "ai_dlc.adapters", "yaml", "a2a", "httpx"):
     try:
