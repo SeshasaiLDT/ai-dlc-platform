@@ -37,7 +37,9 @@ All mutations take an authenticated `Principal` and call the existing `Authoriza
 
 ## Revisions, concurrency, refresh
 
-Each record has a monotonically increasing `revision`. Mutations carry `expected_revision`; a mismatch raises `RevisionConflictError` and leaves the record untouched. Enable/disable and availability changes that are already in the requested state return the current record with no revision bump or audit event. Readers read through the repository on every call and hold no cache, so a disable is visible to the next selection; the revision lets consumers tell versions apart. Any future cache must key on `revision` and be bounded by a short TTL; there is no distributed cache or broker.
+Each record has a monotonically increasing `revision`. Mutations carry `expected_revision`; a mismatch raises `RevisionConflictError` and leaves the record untouched. Enable/disable and availability changes that are already in the requested state return the current record with no revision bump or audit event. `query_eligible` and `evaluate` read the repository once and evaluate and return records from that single snapshot, so a returned record is exactly the state that was evaluated. Readers hold no cache, so a disable is visible to the next selection; the revision lets consumers tell versions apart. Any future cache must key on `revision` and be bounded by a short TTL; there is no distributed cache or broker.
+
+Snapshot consistency is **not** a guarantee that a deployment stays enabled, available or unchanged until invocation: an administrator may disable it right after the snapshot. Future routing must re-check the deployment's current revision and availability before dispatch, within whatever consistency the durable registry adapter provides (for example a conditional read at the snapshot revision), and treat a changed revision as a reason to re-select.
 
 ## Audit
 

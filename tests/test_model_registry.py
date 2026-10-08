@@ -642,3 +642,92 @@ def test_model_provider_interface_unchanged_and_accepts_roles() -> None:
     provider: ModelProvider = Provider()
     assert asyncio.iscoroutinefunction(provider.invoke_model)
     assert ModelRole.ROUTING == "routing"
+
+
+# --- snapshot consistency --------------------------------------------------------------------
+
+
+class CountingRepo(InMemoryModelRegistryRepository):
+    """Counts reads and can run a mutation right after the first snapshot is taken."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.reads = 0
+        self.after_first_read = None
+
+    def list_all(self):
+        self.reads += 1
+        snapshot = super().list_all()
+        hook, self.after_first_read = self.after_first_read, None
+        if hook is not None:
+            hook()
+        return snapshot
+
+    def get(self, deployment_id):
+        self.reads += 1
+        return super().get(deployment_id)
+
+
+def counting_env() -> tuple[Env, CountingRepo]:
+    repo = CountingRepo()
+    env = Env()
+    env.repo = repo
+    env.admin = ModelRegistryAdmin(repo, authorizer(), clock=lambda: NOW)
+    env.reader = ModelRegistryReader(repo)
+    return env, repo
+
+
+def test_query_eligible_reads_repository_once() -> None:
+    env, repo = counting_env()
+    env.add("dep-a")
+    env.add("dep-b")
+    repo.reads = 0
+    assert eligible_ids(env, sel()) == ["dep-a", "dep-b"]
+    assert repo.reads == 1
+    repo.reads = 0
+    env.reader.evaluate(sel(), PROFILES)
+    assert repo.reads == 1
+
+
+def test_concurrent_disable_cannot_mismatch_evaluation_and_returned_record() -> None:
+    env, repo = counting_env()
+    rec = env.add("dep-a")
+    repo.after_first_read = lambda: env.admin.disable(
+        ADMIN, "dep-a", expected_revision=rec.revision, correlation_id="c"
+    )
+    returned = env.reader.query_eligible(sel(), PROFILES)
+    # The disable landed after the snapshot: the result is the evaluated (enabled) state, whole.
+    assert [m.deployment_id for m in returned] == ["dep-a"]
+    assert returned[0].enabled and returned[0].revision == rec.revision
+    # A later query sees the new state.
+    assert eligible_ids(env, sel()) == []
+    assert env.reader.get("dep-a").revision == rec.revision + 1
+
+
+def test_metadata_change_cannot_mismatch_eligibility_result() -> None:
+    env, repo = counting_env()
+    rec = env.add("dep-a")
+    repo.after_first_read = lambda: env.admin.update_metadata(
+        ADMIN,
+        spec("dep-a", context=DeploymentContext(max_context_tokens=1000, max_output_tokens=100)),
+        expected_revision=rec.revision,
+        correlation_id="c",
+    )
+    returned = env.reader.query_eligible(sel(), PROFILES)
+    assert len(returned) == 1
+    assert returned[0].spec.context.max_context_tokens == 200_000  # evaluated state, not the update
+    assert eligible_ids(env, sel()) == []
+
+
+def test_query_filters_and_ordering_preserved_after_snapshot_change() -> None:
+    env, _ = counting_env()
+    for name in ("dep-c", "dep-a", "dep-b"):
+        env.add(name)
+    env.add("dep-d", enable=False)
+    env.add("dep-e", capabilities=DeploymentCapabilities(reasoning=ReasoningLevel.NONE))
+    results = env.reader.evaluate(sel(), PROFILES)
+    assert [r.deployment_id for r in results] == ["dep-a", "dep-b", "dep-c", "dep-d", "dep-e"]
+    assert eligible_ids(env, sel()) == ["dep-a", "dep-b", "dep-c"]
+    assert IneligibleReason.DISABLED in {
+        r for res in results if res.deployment_id == "dep-d" for r in res.reasons
+    }

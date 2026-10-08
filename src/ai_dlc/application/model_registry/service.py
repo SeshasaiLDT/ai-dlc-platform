@@ -56,23 +56,38 @@ class ModelRegistryReader:
         self, request: ModelSelectionRequest, profiles: RoleProfiles
     ) -> tuple[EligibilityResult, ...]:
         """Per-deployment eligibility with reasons, ordered by deployment ID (not ranked)."""
-        requirements = request.effective_requirements(profiles.for_role(request.role))
-        return tuple(
-            evaluate_eligibility(
-                model,
-                requirements,
-                data_classification=request.data_classification,
-                separate_from=request.separate_from_deployments,
-            )
-            for model in self._repository.list_all()
-        )
+        return tuple(result for _, result in self._evaluate_snapshot(request, profiles))
 
     def query_eligible(
         self, request: ModelSelectionRequest, profiles: RoleProfiles
     ) -> tuple[RegisteredModel, ...]:
-        """Deployments passing the request's effective requirements, ordered by ID."""
-        eligible = {r.deployment_id for r in self.evaluate(request, profiles) if r.eligible}
-        return tuple(m for m in self._repository.list_all() if m.deployment_id in eligible)
+        """Deployments passing the request's effective requirements, ordered by ID.
+
+        Evaluation and the returned records come from one repository snapshot, so each returned
+        record is exactly the state that was evaluated. This is not a guarantee that the
+        deployment stays enabled until invocation.
+        """
+        return tuple(
+            model for model, result in self._evaluate_snapshot(request, profiles) if result.eligible
+        )
+
+    def _evaluate_snapshot(
+        self, request: ModelSelectionRequest, profiles: RoleProfiles
+    ) -> tuple[tuple[RegisteredModel, EligibilityResult], ...]:
+        requirements = request.effective_requirements(profiles.for_role(request.role))
+        snapshot = sorted(self._repository.list_all(), key=lambda m: m.deployment_id)
+        return tuple(
+            (
+                model,
+                evaluate_eligibility(
+                    model,
+                    requirements,
+                    data_classification=request.data_classification,
+                    separate_from=request.separate_from_deployments,
+                ),
+            )
+            for model in snapshot
+        )
 
 
 class ModelRegistryAdmin:
