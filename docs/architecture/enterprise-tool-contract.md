@@ -1,6 +1,6 @@
 # Enterprise tool contract
 
-Status: Contract defined (AIDLC-31); runtime integration deferred
+Status: Contract defined in AIDLC-31, implemented in Epic 4, and validated in AIDLC-37.
 
 ## Purpose and existing boundaries
 
@@ -238,5 +238,7 @@ AIDLC-35 implements [isolated local workspace tools](local-workspace-toolset.md)
 AIDLC-36 defines the [AgentCore Gateway catalog and CloudFormation configuration](agentcore-gateway.md).
 AIDLC-100 supplies the
 Resource Binding Registry contract and in-memory resolver; durable storage and
-managed connection lookup remain deployment work. Future integration stories
-should test schema rejection, scope immutability, normalization, and redaction.
+managed connection lookup remain deployment work. AIDLC-37's
+[integration contract suite](../testing/integration-contract-tests.md) exercises
+schema rejection, scope isolation, normalization, redaction, Gateway correlation,
+and the local-to-remote commit handoff across the implemented integrations.

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from time import perf_counter
 from uuid import uuid4
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from ai_dlc.application.approval import ApprovalNotFoundError, ApprovalService
 from ai_dlc.application.authorization import JiraProjectTarget, ScopeRestriction
@@ -286,7 +286,9 @@ class GovernedJiraService:
             JiraOperation.TRANSITION_ISSUE: JiraWriteResult,
             JiraOperation.ADD_COMMENT: JiraCommentResult,
         }[operation]
-        data = model_type.model_validate(raw, from_attributes=True)
+        data = model_type.model_validate(
+            raw.model_dump() if isinstance(raw, BaseModel) else raw, from_attributes=True
+        )
         if isinstance(data, JiraSearchPage):
             if len(data.issues) > request.page_size or any(
                 item.project_key != request.project_key for item in data.issues
