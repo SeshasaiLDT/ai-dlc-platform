@@ -554,3 +554,65 @@ def test_sdk_does_not_import_routing_and_profile_extension_is_backward_compatibl
     assert Env().route(explicit_capability="investigation", profile_=legacy).outcome is (
         RoutingOutcome.CONFIGURATION_ERROR
     )
+
+
+# --- mixed workflow policy --------------------------------------------------------------------
+
+MIXED = (
+    WorkflowRoute(id="wf-on", capability=CODE),
+    WorkflowRoute(id="wf-on2", capability=CODE),
+    WorkflowRoute(id="wf-other", capability=IMPACT),
+    WorkflowRoute(id="wf-off", capability=CODE, enabled=False),
+)
+
+
+def test_mixed_enabled_and_disabled_workflow_fails_closed() -> None:
+    env = Env(workflows=MIXED)
+    for ids in (("wf-off",), ("wf-on", "wf-off"), ("wf-off", "wf-on")):
+        d = env.route(workflow_ids=ids)
+        assert d.outcome is RoutingOutcome.UNRESOLVED and d.capability is None
+        assert d.reason is RoutingReason.WORKFLOW_DISABLED and not d.classifier_candidate
+    assert env.telemetry.events == ["routing.unresolved"] * 3
+
+
+def test_multiple_enabled_workflows_same_capability_route() -> None:
+    d = Env(workflows=MIXED).route(workflow_ids=("wf-on", "wf-on2"))
+    assert d.outcome is RoutingOutcome.ROUTED and d.capability is CODE
+    assert d.workflow_id == "wf-on"
+
+
+def test_multiple_enabled_workflows_different_capabilities_are_ambiguous() -> None:
+    d = Env(workflows=MIXED).route(workflow_ids=("wf-on", "wf-other"))
+    assert d.reason is RoutingReason.AMBIGUOUS_WORKFLOW and d.classifier_candidate
+
+
+def test_unknown_and_known_workflow_together_do_not_route() -> None:
+    env = Env(workflows=MIXED)
+    for ids in (("wf-on", "nope"), ("nope", "wf-on")):
+        d = env.route(workflow_ids=ids)
+        assert d.outcome is RoutingOutcome.UNRESOLVED and d.capability is None
+        assert d.reason is RoutingReason.UNKNOWN_WORKFLOW
+    # a disabled workflow wins over an unknown one, keeping the non-candidate outcome
+    d = env.route(workflow_ids=("wf-off", "nope"))
+    assert d.reason is RoutingReason.WORKFLOW_DISABLED and not d.classifier_candidate
+
+
+def test_workflow_selection_order_does_not_change_outcome() -> None:
+    env = Env(workflows=MIXED)
+    a = env.route(workflow_ids=("wf-on", "wf-on2"))
+    b = env.route(workflow_ids=("wf-on2", "wf-on"))
+    assert (a.outcome, a.capability, a.reason) == (b.outcome, b.capability, b.reason)
+    assert a.workflow_id == "wf-on" and b.workflow_id == "wf-on"  # lowest id, not request order
+
+
+def test_explicit_capability_with_unrelated_disabled_workflow_still_routes() -> None:
+    env = Env(workflows=MIXED)
+    d = env.route(explicit_capability="investigation", workflow_ids=("wf-off",))
+    assert d.outcome is RoutingOutcome.ROUTED and d.capability is INV
+    denied = env.route(explicit_capability="implementation", workflow_ids=("wf-off",))
+    assert denied.outcome is RoutingOutcome.DENIED
+
+
+def test_mixed_workflow_with_unauthorized_capability_is_denied() -> None:
+    env = Env(workflows=(WorkflowRoute(id="wf-impl", capability=IMPL),))
+    assert env.route(workflow_ids=("wf-impl",)).outcome is RoutingOutcome.DENIED

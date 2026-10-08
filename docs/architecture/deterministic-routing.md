@@ -43,6 +43,10 @@ Duplicate workflow IDs or capabilities are rejected at load and fail closed at r
 
 Explicit selection beats workflows; a *locked* enabled workflow naming a different capability makes the request invalid rather than being overridden. Nothing lower in the list can replace a higher choice.
 
+## Mixed-workflow policy
+
+When a request lists several workflow IDs, none may be silently ignored. In order: any duplicate mapping -> `CONFIGURATION_ERROR`; any known **disabled** workflow -> `UNRESOLVED/workflow_disabled` (never a classifier candidate, even if others are enabled); any **unknown** ID alongside known ones -> `UNRESOLVED/unknown_workflow`; enabled workflows mapping to different capabilities -> `UNRESOLVED/ambiguous_workflow`; otherwise (all enabled, one capability) the capability is authorized and routed, and the reported `workflow_id` is the lowest ID so the result does not depend on request order. An explicit capability selection is unaffected by unrelated disabled workflows, but a locked, enabled workflow naming a different capability still makes it invalid.
+
 ## Decision table
 
 | Situation | Outcome | Reason | Classifier candidate |
@@ -54,10 +58,10 @@ Explicit selection beats workflows; a *locked* enabled workflow naming a differe
 | Explicit vs locked workflow conflict | INVALID_REQUEST | workflow_capability_conflict | no |
 | Workflow matches, authorized | ROUTED | workflow_matched | no |
 | Workflow, capability not authorized | DENIED | capability_not_authorized | no |
-| Workflow disabled | UNRESOLVED | workflow_disabled | no |
+| Any listed workflow disabled (alone or mixed) | UNRESOLVED | workflow_disabled | no |
 | Workflow maps to unavailable capability | CONFIGURATION_ERROR | workflow_capability_unavailable | no |
 | Duplicate workflow mapping | CONFIGURATION_ERROR | duplicate_workflow_mapping | no |
-| Unknown workflow ID | UNRESOLVED | unknown_workflow | **yes** |
+| Unknown workflow ID (alone or mixed with known) | UNRESOLVED | unknown_workflow | **yes** |
 | Workflows map to different capabilities | UNRESOLVED | ambiguous_workflow | **yes** |
 | Only free text | UNRESOLVED | no_deterministic_match | **yes** |
 | Malformed / empty | INVALID_REQUEST | malformed_request / empty_request | no |

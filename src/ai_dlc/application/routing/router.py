@@ -144,20 +144,21 @@ class DeterministicRouter:
                     RoutingReason.DUPLICATE_WORKFLOW_MAPPING,
                 )
             known = [items[0] for items in matched.values() if items]
-            if not known:
-                return make(
-                    RoutingOutcome.UNRESOLVED, RoutingRule.NONE, RoutingReason.UNKNOWN_WORKFLOW
-                )
-            enabled = [item for item in known if item.enabled]
-            if not enabled:
+            # Mixed requests fail closed: no listed workflow may be silently ignored.
+            if any(not item.enabled for item in known):
                 return make(
                     RoutingOutcome.UNRESOLVED, RoutingRule.NONE, RoutingReason.WORKFLOW_DISABLED
                 )
+            if len(known) != len(matched):
+                return make(
+                    RoutingOutcome.UNRESOLVED, RoutingRule.NONE, RoutingReason.UNKNOWN_WORKFLOW
+                )
+            enabled = known
             if len({item.capability for item in enabled}) > 1:
                 return make(
                     RoutingOutcome.UNRESOLVED, RoutingRule.NONE, RoutingReason.AMBIGUOUS_WORKFLOW
                 )
-            chosen = enabled[0]
+            chosen = min(enabled, key=lambda item: item.id)  # independent of request order
             capability = chosen.capability
             if self._authorization_failure(capability, context, profile, revision):
                 return make(RoutingOutcome.DENIED, rule, RoutingReason.CAPABILITY_NOT_AUTHORIZED)
