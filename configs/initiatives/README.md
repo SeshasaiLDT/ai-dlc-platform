@@ -65,3 +65,7 @@ Its intended use and synthetic identifiers are documented in the
 ## Routing (optional)
 
 `routing.capabilities`, `routing.workflows` and `routing.classifier` configure deterministic capability routing (see `docs/architecture/deterministic-routing.md`). Both default to empty, so existing profiles remain valid.
+
+## Reasoning policy (optional)
+
+`reasoning` sets the per-initiative standard-vs-deep tier policy (see `docs/architecture/reasoning-escalation.md`). Every field has a safe default, so existing profiles remain valid.
