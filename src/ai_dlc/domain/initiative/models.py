@@ -255,6 +255,37 @@ class Routing(ProfileModel):
         return _unique_ids(value, "workflow")
 
 
+class ReasoningPolicy(ProfileModel):
+    """Per-initiative standard-vs-deep reasoning tier policy (optional, safe defaults).
+
+    Defaults are conservative starting points, not tuned production thresholds. A ``None``
+    threshold disables that trigger. ``deep_reasoning_level`` uses the harness ReasoningLevel
+    values (1 basic, 2 moderate, 3 extended).
+    """
+
+    escalation_enabled: bool = True
+    deep_reasoning_allowed: bool = True
+    always_deep: bool = False  # governed policy: every task starts on the deep tier
+    max_escalations_per_task: Annotated[int, Field(ge=0, le=3)] = 1
+    context_size_threshold_tokens: Annotated[int, Field(ge=1)] | None = 64_000
+    complexity_score_threshold: Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)] | None = (
+        0.7
+    )
+    affected_components_threshold: Annotated[int, Field(ge=1)] | None = 10
+    repositories_threshold: Annotated[int, Field(ge=1)] | None = 3
+    dependency_relationships_threshold: Annotated[int, Field(ge=1)] | None = 25
+    failed_attempt_threshold: Annotated[int, Field(ge=1, le=10)] | None = 2
+    deep_reasoning_level: Annotated[int, Field(ge=1, le=3)] | None = 3
+    deep_capabilities: tuple[Capability, ...] = ()
+
+    @field_validator("deep_capabilities")
+    @classmethod
+    def unique_capabilities(cls, value: tuple[Capability, ...]) -> tuple[Capability, ...]:
+        if len(set(value)) != len(value):
+            raise ValueError("duplicate deep capability")
+        return value
+
+
 class InitiativeProfile(ProfileModel):
     schema_version: Literal["1.0"]
     initiative: InitiativeIdentity
@@ -267,6 +298,7 @@ class InitiativeProfile(ProfileModel):
     policies: Policies = Field(default_factory=Policies)
     defaults: Defaults = Field(default_factory=Defaults)
     routing: Routing = Field(default_factory=Routing)
+    reasoning: ReasoningPolicy = Field(default_factory=ReasoningPolicy)
 
     @field_validator("schema_version", mode="before")
     @classmethod
