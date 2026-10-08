@@ -7,6 +7,7 @@ from .context import (
     TrustedGatewayContext,
 )
 from .discovery import AvailableTool, GatewayDiscovery
+from .invocation import INVOCATION_REF_FIELD, TrustedInvocationRegistry
 from .router import GatewayRouter, GatewayTelemetryEvent, UnknownGatewayToolError
 from .runtime import GatewayRuntimeAccess
 
@@ -18,8 +19,10 @@ __all__ = [
     "GatewayDiscovery",
     "GatewayRouter",
     "GatewayRuntimeAccess",
+    "INVOCATION_REF_FIELD",
     "GatewayTelemetryEvent",
     "GatewayTool",
     "TrustedGatewayContext",
+    "TrustedInvocationRegistry",
     "UnknownGatewayToolError",
 ]

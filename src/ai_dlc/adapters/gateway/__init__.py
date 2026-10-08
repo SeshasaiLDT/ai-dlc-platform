@@ -1,10 +1,12 @@
 from .cloudformation import synthesize_gateway_template
-from .lambda_target import GatewayLambdaTarget, TrustedInvocationLookup
+from .invocation_store import DynamoDbInvocationRecordStore, InMemoryInvocationRecordStore
+from .lambda_target import GatewayLambdaTarget
 from .telemetry import JsonGatewayTelemetrySink
 
 __all__ = [
     "GatewayLambdaTarget",
+    "DynamoDbInvocationRecordStore",
+    "InMemoryInvocationRecordStore",
     "JsonGatewayTelemetrySink",
-    "TrustedInvocationLookup",
     "synthesize_gateway_template",
 ]

@@ -1,7 +1,6 @@
 """Pure least-privilege discovery; application services still authorize calls."""
 
 from dataclasses import dataclass
-from fnmatch import fnmatchcase
 
 from ai_dlc.application.tool_policy import ToolKind, ToolOperationRisk, ToolPolicyEffect
 from ai_dlc.application.tool_policy.ports import ToolPolicyRepository
@@ -76,19 +75,18 @@ class GatewayDiscovery:
                     if type(rule.operation) is type(tool.operation)
                     and rule.operation == tool.operation
                     and rule.target_id in (None, scope)
-                    and (
-                        rule.branch_pattern is None
-                        or tool.domain is ToolKind.GIT
-                        and any(
-                            fnmatchcase(repo.default_branch, rule.branch_pattern)
-                            for repo in profile.integrations.git.repositories
-                            if repo.id == scope
-                        )
-                    )
                 ]
-                if len(applicable) == 1 and applicable[0].effect is not ToolPolicyEffect.DENY:
+                if any(
+                    rule.effect is ToolPolicyEffect.DENY and rule.branch_pattern is None
+                    for rule in applicable
+                ):
+                    continue
+                eligible = [rule for rule in applicable if rule.effect is not ToolPolicyEffect.DENY]
+                if eligible:
                     visible = True
-                    approval = approval or applicable[0].effect is ToolPolicyEffect.REQUIRE_APPROVAL
+                    approval = approval or any(
+                        rule.effect is ToolPolicyEffect.REQUIRE_APPROVAL for rule in eligible
+                    )
             if visible:
                 result.append(
                     AvailableTool(

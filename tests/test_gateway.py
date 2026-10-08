@@ -1,27 +1,36 @@
 """AgentCore catalog, trusted discovery, dispatch and CloudFormation drift checks."""
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from ai_dlc.adapters.authorization import InMemoryMembershipRepository
-from ai_dlc.adapters.gateway import GatewayLambdaTarget, synthesize_gateway_template
+from ai_dlc.adapters.gateway import (
+    DynamoDbInvocationRecordStore,
+    GatewayLambdaTarget,
+    InMemoryInvocationRecordStore,
+    synthesize_gateway_template,
+)
 from ai_dlc.adapters.initiatives import InMemoryInitiativeRepository, InMemoryRegistryEventSink
 from ai_dlc.adapters.tool_policy import InMemoryToolPolicyRepository
 from ai_dlc.application.authorization import RoleGrant, RolePolicy, ScopeRestriction
 from ai_dlc.application.gateway import (
+    INVOCATION_REF_FIELD,
     AuthenticatedRuntimeSelection,
     GatewayCatalog,
     GatewayContextResolver,
     GatewayDiscovery,
     GatewayRouter,
     GatewayRuntimeAccess,
+    TrustedInvocationRegistry,
     UnknownGatewayToolError,
 )
 from ai_dlc.application.initiatives import InitiativeNotFoundError, InitiativeRegistry
 from ai_dlc.application.tool_policy import (
+    GitOperation,
     JiraOperation,
     ToolKind,
     ToolPolicy,
@@ -154,6 +163,15 @@ def router(world):
     )
 
 
+def invocations(world):
+    return TrustedInvocationRegistry(
+        InMemoryInvocationRecordStore(),
+        world.resolver,
+        gateway_id="gateway-id",
+        target_ids={"Jira": "target-id", "ServiceNow": "snow-id", "RemoteGit": "git-id"},
+    )
+
+
 def names(world, item=A):
     return tuple(found.tool.name for found in world.discovery.available_tools(world.context(item)))
 
@@ -259,6 +277,21 @@ def test_explicit_deny_and_approval_visibility_without_side_effects():
     assert world.discovery.available_tools(world.context(item)) == found
 
 
+def test_git_branch_policy_is_visible_without_guessing_target_branch():
+    item = profile("initiative-alpha")
+    policies = tuple(
+        ToolPolicy(
+            item.initiative.id,
+            tool.operation,
+            ToolPolicyEffect.ALLOW,
+            branch_pattern="feature/*" if tool.operation is GitOperation.CREATE_BRANCH else None,
+        )
+        for tool in GatewayCatalog.from_handlers().tools
+    )
+    world = World(profiles=(item,), policy_rules=policies)
+    assert "git_remote_create_branch" in names(world, item)
+
+
 def test_router_uses_existing_handlers_and_trusted_context_only():
     world = World()
     entry, (jira, snow, git, telemetry) = router(world)
@@ -279,19 +312,26 @@ def test_runtime_facade_exposes_filtered_tools_and_uses_gateway_transport():
     class Transport:
         calls = []
 
-        def invoke(self, name, arguments, *, context):
-            self.calls.append((name, arguments, context))
+        def invoke(self, name, arguments, *, context, message_id):
+            self.calls.append((name, arguments, context, message_id))
             return {"outcome": "success"}
 
     transport = Transport()
-    access = GatewayRuntimeAccess(world.discovery, transport)
+    access = GatewayRuntimeAccess(world.discovery, transport, invocations(world))
     context = world.context()
     assert {item["name"] for item in access.available_tools(context=context)} == {
         "jira_get_issue",
         "jira_search_issues",
     }
+    assert all(
+        INVOCATION_REF_FIELD not in item["inputSchema"]["properties"]
+        for item in access.available_tools(context=context)
+    )
     assert access.invoke("jira_get_issue", {}, context=context)["outcome"] == "success"
     assert transport.calls[0][2] is context
+    assert INVOCATION_REF_FIELD in transport.calls[0][1]
+    with pytest.raises(PermissionError):
+        access.invoke("jira_get_issue", {INVOCATION_REF_FIELD: "forged"}, context=context)
     with pytest.raises(UnknownGatewayToolError):
         access.invoke("jira_create_issue", {}, context=context)
     assert len(transport.calls) == 1
@@ -344,33 +384,212 @@ def test_agent_arguments_cannot_set_trusted_fields():
 def test_lambda_target_requires_aws_metadata_and_trusted_lookup():
     world = World()
     entry, _ = router(world)
-
-    class Lookup:
-        def resolve(self, **kwargs):
-            assert kwargs["gateway_id"] == "gateway-id"
-            return world.context()
-
-    target = GatewayLambdaTarget(entry, Lookup(), target_name="Jira")
+    registry = invocations(world)
+    target = GatewayLambdaTarget(entry, registry, target_name="Jira")
     with pytest.raises(PermissionError):
         target.invoke({}, SimpleNamespace())
     metadata = {
+        "bedrockAgentCoreMessageVersion": "1.0",
         "bedrockAgentCoreGatewayId": "gateway-id",
         "bedrockAgentCoreTargetId": "target-id",
         "bedrockAgentCoreAwsRequestId": "request-id",
         "bedrockAgentCoreMcpMessageId": "message-id",
         "bedrockAgentCoreToolName": "Jira___jira_get_issue",
     }
-    response = target.invoke(
+    issued = registry.issue(
+        "jira_get_issue",
         {"project_key": "ABC"},
+        context=world.context(),
+        message_id="message-id",
+    )
+    response = target.invoke(
+        {"project_key": "ABC", INVOCATION_REF_FIELD: issued.reference},
         SimpleNamespace(client_context=SimpleNamespace(custom=metadata)),
     )
     assert response["outcome"] == "success"
+    with pytest.raises(PermissionError):
+        target.invoke(
+            {"project_key": "ABC", INVOCATION_REF_FIELD: issued.reference},
+            SimpleNamespace(client_context=SimpleNamespace(custom=metadata)),
+        )
+    metadata["bedrockAgentCoreMessageVersion"] = "2.0"
+    with pytest.raises(PermissionError, match="version"):
+        target.invoke({}, SimpleNamespace(client_context=SimpleNamespace(custom=metadata)))
+    metadata["bedrockAgentCoreMessageVersion"] = "1.0"
     metadata["bedrockAgentCoreToolName"] = "RemoteGit___git_remote_get_repository"
     with pytest.raises(UnknownGatewayToolError):
         target.invoke({}, SimpleNamespace(client_context=SimpleNamespace(custom=metadata)))
     metadata["bedrockAgentCoreToolName"] = "Jira___servicenow_get_record"
     with pytest.raises(UnknownGatewayToolError):
         target.invoke({}, SimpleNamespace(client_context=SimpleNamespace(custom=metadata)))
+
+
+def test_invocation_reference_is_bound_to_tool_arguments_metadata_and_one_use():
+    world = World()
+    registry = invocations(world)
+    context = world.context()
+    arguments = {"project_key": "ABC"}
+
+    def issue():
+        return registry.issue(
+            "jira_get_issue", arguments, context=context, message_id="message-id"
+        ).reference
+
+    with pytest.raises(PermissionError):
+        registry.resolve(
+            "missing",
+            gateway_id="gateway-id",
+            target_id="target-id",
+            tool_name="jira_get_issue",
+            message_id="message-id",
+            arguments=arguments,
+        )
+    ref = issue()
+    with pytest.raises(PermissionError, match="mismatch"):
+        registry.resolve(
+            ref,
+            gateway_id="gateway-id",
+            target_id="target-id",
+            tool_name="jira_get_issue",
+            message_id="wrong-user-session",
+            arguments=arguments,
+        )
+    with pytest.raises(PermissionError, match="unavailable"):
+        registry.resolve(
+            ref,
+            gateway_id="gateway-id",
+            target_id="target-id",
+            tool_name="jira_get_issue",
+            message_id="message-id",
+            arguments=arguments,
+        )
+    ref = issue()
+    with pytest.raises(PermissionError, match="mismatch"):
+        registry.resolve(
+            ref,
+            gateway_id="gateway-id",
+            target_id="snow-id",
+            tool_name="jira_get_issue",
+            message_id="message-id",
+            arguments=arguments,
+        )
+    ref = issue()
+    with pytest.raises(PermissionError, match="mismatch"):
+        registry.resolve(
+            ref,
+            gateway_id="gateway-id",
+            target_id="target-id",
+            tool_name="jira_get_issue",
+            message_id="message-id",
+            arguments={"project_key": "XYZ", "initiative_id": B.initiative.id},
+        )
+    ref = issue()
+    resolved = registry.resolve(
+        ref,
+        gateway_id="gateway-id",
+        target_id="target-id",
+        tool_name="jira_get_issue",
+        message_id="message-id",
+        arguments=arguments,
+    )
+    assert resolved.resolution.authorization.principal.subject_id == USER.subject_id
+    assert resolved.resolution.authorization.initiative_id == A.initiative.id
+    with pytest.raises(PermissionError, match="unavailable"):
+        registry.resolve(
+            ref,
+            gateway_id="gateway-id",
+            target_id="target-id",
+            tool_name="jira_get_issue",
+            message_id="message-id",
+            arguments=arguments,
+        )
+
+
+def test_expired_or_changed_authorization_correlation_fails_closed(monkeypatch):
+    import ai_dlc.application.gateway.invocation as module
+
+    world = World()
+    registry = invocations(world)
+    context = world.context()
+    ref = registry.issue("jira_get_issue", {}, context=context, message_id="m").reference
+    monkeypatch.setattr(module, "time", lambda: 10**12)
+    with pytest.raises(PermissionError, match="mismatch"):
+        registry.resolve(
+            ref,
+            gateway_id="gateway-id",
+            target_id="target-id",
+            tool_name="jira_get_issue",
+            message_id="m",
+            arguments={},
+        )
+    monkeypatch.undo()
+    other = replace(context, initiative_revision=context.initiative_revision + 1)
+    ref = registry.issue("jira_get_issue", {}, context=other, message_id="m").reference
+    with pytest.raises(PermissionError, match="authorization changed"):
+        registry.resolve(
+            ref,
+            gateway_id="gateway-id",
+            target_id="target-id",
+            tool_name="jira_get_issue",
+            message_id="m",
+            arguments={},
+        )
+
+
+def test_correlated_context_cannot_move_to_another_user_or_initiative():
+    store = InMemoryInvocationRecordStore()
+    alice = World(profiles=(A,), user=Principal("alice", "test"))
+    bob = World(profiles=(A,), user=Principal("bob", "test"))
+    other_initiative = World(profiles=(B,), user=Principal("alice", "test"))
+
+    def registry(world):
+        return TrustedInvocationRegistry(
+            store, world.resolver, gateway_id="gateway-id", target_ids={"Jira": "target-id"}
+        )
+
+    issuer = registry(alice)
+    for receiving_world in (bob, other_initiative):
+        ref = issuer.issue(
+            "jira_get_issue", {}, context=alice.context(A), message_id="message-id"
+        ).reference
+        with pytest.raises(PermissionError):
+            registry(receiving_world).resolve(
+                ref,
+                gateway_id="gateway-id",
+                target_id="target-id",
+                tool_name="jira_get_issue",
+                message_id="message-id",
+                arguments={},
+            )
+
+
+def test_dynamodb_store_uses_conditional_put_and_atomic_delete_return():
+    class Client:
+        def __init__(self):
+            self.items = {}
+            self.writes = []
+            self.deletes = []
+
+        def put_item(self, **kwargs):
+            self.writes.append(kwargs)
+            key = kwargs["Item"]["reference_hash"]["S"]
+            if key in self.items:
+                raise ValueError("conditional write failed")
+            self.items[key] = kwargs["Item"]
+
+        def delete_item(self, **kwargs):
+            self.deletes.append(kwargs)
+            key = kwargs["Key"]["reference_hash"]["S"]
+            item = self.items.pop(key, None)
+            return {"Attributes": item} if item else {}
+
+    client = Client()
+    store = DynamoDbInvocationRecordStore(client, "invocations")
+    store.put("hashed-reference", {"initiative_id": "initiative-alpha"}, 123)
+    assert client.writes[0]["ConditionExpression"] == "attribute_not_exists(reference_hash)"
+    assert store.take("hashed-reference") == {"initiative_id": "initiative-alpha"}
+    assert client.deletes[0]["ReturnValues"] == "ALL_OLD"
+    assert store.take("hashed-reference") is None
 
 
 def test_cloudformation_synthesis_matches_checked_in_template_and_is_scoped():
@@ -387,6 +606,19 @@ def test_cloudformation_synthesis_matches_checked_in_template_and_is_scoped():
     assert resources["RuntimeGatewayInvokePolicy"]["Properties"]["PolicyDocument"]["Statement"][0][
         "Action"
     ] == ["bedrock-agentcore:InvokeGateway"]
+    assert resources["InvocationTable"]["Properties"]["TimeToLiveSpecification"]["Enabled"]
+    assert resources["RuntimeInvocationWritePolicy"]["Properties"]["PolicyDocument"]["Statement"][
+        0
+    ]["Action"] == ["dynamodb:PutItem"]
+    for label in ("Jira", "ServiceNow", "RemoteGit"):
+        assert resources[f"{label}InvocationReadPolicy"]["Properties"]["PolicyDocument"][
+            "Statement"
+        ][0]["Action"] == ["dynamodb:DeleteItem"]
+    assert not any(key.endswith("FunctionArn") for key in actual["Parameters"])
+    assert all(
+        "${AWS::AccountId}" in json.dumps(resources[key])
+        for key in ("JiraTarget", "ServiceNowTarget", "RemoteGitTarget")
+    )
     names = []
     for key in ("JiraTarget", "ServiceNowTarget", "RemoteGitTarget"):
         target = resources[key]["Properties"]["TargetConfiguration"]["Mcp"]["Lambda"]
@@ -410,8 +642,13 @@ def test_gateway_schema_is_projected_from_handler_schema():
     ]
     for item in tools:
         source = catalog.by_name[item["Name"]].input_schema
-        assert set(item["InputSchema"]["Properties"]) == set(source["properties"])
-        assert item["InputSchema"].get("Required", []) == source.get("required", [])
+        assert set(item["InputSchema"]["Properties"]) == set(source["properties"]) | {
+            INVOCATION_REF_FIELD
+        }
+        assert item["InputSchema"].get("Required", []) == [
+            *source.get("required", []),
+            INVOCATION_REF_FIELD,
+        ]
         assert not set(source["properties"]) & {
             "site_url",
             "token",
@@ -420,6 +657,44 @@ def test_gateway_schema_is_projected_from_handler_schema():
             "bucket",
             "table",
         }
+
+
+def test_projected_schema_cannot_bypass_strict_request_validation():
+    from test_jira_integration import World as JiraWorld
+
+    world = World()
+    jira_world = JiraWorld()
+    entry = GatewayRouter(
+        world.catalog, world.discovery, jira_world.mcp, FakeHandler(), FakeHandler(), Telemetry()
+    )
+    registry = invocations(world)
+    target = GatewayLambdaTarget(entry, registry, target_name="Jira")
+    schema = next(
+        item["InputSchema"]
+        for item in synthesize_gateway_template(world.catalog)["Resources"]["JiraTarget"][
+            "Properties"
+        ]["TargetConfiguration"]["Mcp"]["Lambda"]["ToolSchema"]["InlinePayload"]
+        if item["Name"] == "jira_search_issues"
+    )
+    assert schema["Properties"]["page_size"] == {"Type": "integer", "Description": "Page Size"}
+    arguments = {"project_key": "ABC", "page_size": 101}
+    issued = registry.issue(
+        "jira_search_issues", arguments, context=world.context(), message_id="search-message"
+    )
+    metadata = {
+        "bedrockAgentCoreMessageVersion": "1.0",
+        "bedrockAgentCoreGatewayId": "gateway-id",
+        "bedrockAgentCoreTargetId": "target-id",
+        "bedrockAgentCoreAwsRequestId": "request-id",
+        "bedrockAgentCoreMcpMessageId": "search-message",
+        "bedrockAgentCoreToolName": "Jira___jira_search_issues",
+    }
+    result = target.invoke(
+        {**arguments, INVOCATION_REF_FIELD: issued.reference},
+        SimpleNamespace(client_context=SimpleNamespace(custom=metadata)),
+    )
+    assert result["error"]["code"] == "INVALID_ARGUMENT"
+    assert jira_world.provider.calls == []
 
 
 def test_hidden_servicenow_and_git_writes_still_fail_in_services():

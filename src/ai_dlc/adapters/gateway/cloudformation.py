@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from ai_dlc.application.gateway import GatewayCatalog
+from ai_dlc.application.gateway.invocation import INVOCATION_REF_FIELD
 from ai_dlc.application.tool_policy import ToolKind
 
 
@@ -49,14 +50,40 @@ def synthesize_gateway_template(catalog: GatewayCatalog) -> dict[str, object]:
         },
     }
     domains = {
-        ToolKind.JIRA: ("Jira", "JiraTargetFunctionArn"),
-        ToolKind.SERVICENOW: ("ServiceNow", "ServiceNowTargetFunctionArn"),
-        ToolKind.GIT: ("RemoteGit", "GitTargetFunctionArn"),
+        ToolKind.JIRA: ("Jira", "JiraTargetFunctionName", "JiraTargetRoleName"),
+        ToolKind.SERVICENOW: (
+            "ServiceNow",
+            "ServiceNowTargetFunctionName",
+            "ServiceNowTargetRoleName",
+        ),
+        ToolKind.GIT: ("RemoteGit", "GitTargetFunctionName", "GitTargetRoleName"),
     }
-    for _, parameter in domains.values():
-        params[parameter] = {"Type": "String", "AllowedPattern": "arn:aws.*:lambda:.*:function:.*"}
-    target_arns = [{"Ref": item[1]} for item in domains.values()]
+    for _, function_parameter, role_parameter in domains.values():
+        params[function_parameter] = {
+            "Type": "String",
+            "AllowedPattern": "[a-zA-Z0-9_-]{1,64}",
+        }
+        params[role_parameter] = {"Type": "String", "AllowedPattern": "[a-zA-Z0-9_+=,.@-]{1,64}"}
+    target_arns = [
+        {
+            "Fn::Sub": (
+                "arn:${AWS::Partition}:lambda:${AWS::Region}:"
+                f"${{AWS::AccountId}}:function:${{{item[1]}}}"
+            )
+        }
+        for item in domains.values()
+    ]
     resources: dict[str, object] = {
+        "InvocationTable": {
+            "Type": "AWS::DynamoDB::Table",
+            "Properties": {
+                "BillingMode": "PAY_PER_REQUEST",
+                "AttributeDefinitions": [{"AttributeName": "reference_hash", "AttributeType": "S"}],
+                "KeySchema": [{"AttributeName": "reference_hash", "KeyType": "HASH"}],
+                "TimeToLiveSpecification": {"AttributeName": "expires_at", "Enabled": True},
+                "SSESpecification": {"SSEEnabled": True},
+            },
+        },
         "GatewayRole": {
             "Type": "AWS::IAM::Role",
             "Properties": {
@@ -125,8 +152,25 @@ def synthesize_gateway_template(catalog: GatewayCatalog) -> dict[str, object]:
                 },
             },
         },
+        "RuntimeInvocationWritePolicy": {
+            "Type": "AWS::IAM::Policy",
+            "Properties": {
+                "PolicyName": {"Fn::Sub": "aidlc-${Environment}-invocation-write"},
+                "Roles": [{"Ref": "RuntimeRoleName"}],
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": ["dynamodb:PutItem"],
+                            "Resource": [{"Fn::GetAtt": ["InvocationTable", "Arn"]}],
+                        }
+                    ],
+                },
+            },
+        },
     }
-    for domain, (label, parameter) in domains.items():
+    for domain, (label, parameter, role_parameter) in domains.items():
         definitions = []
         for tool in catalog.tools:
             if tool.domain is domain:
@@ -134,7 +178,7 @@ def synthesize_gateway_template(catalog: GatewayCatalog) -> dict[str, object]:
                     {
                         "Name": tool.name,
                         "Description": f"Governed {domain.value} {tool.operation.value}",
-                        "InputSchema": _schema(tool.input_schema, tool.input_schema),
+                        "InputSchema": _target_schema(tool.input_schema),
                     }
                 )
         resources[f"{label}Target"] = {
@@ -148,10 +192,34 @@ def synthesize_gateway_template(catalog: GatewayCatalog) -> dict[str, object]:
                 "TargetConfiguration": {
                     "Mcp": {
                         "Lambda": {
-                            "LambdaArn": {"Ref": parameter},
+                            "LambdaArn": {
+                                "Fn::Sub": (
+                                    "arn:${AWS::Partition}:lambda:${AWS::Region}:"
+                                    f"${{AWS::AccountId}}:function:${{{parameter}}}"
+                                )
+                            },
                             "ToolSchema": {"InlinePayload": definitions},
                         }
                     }
+                },
+            },
+        }
+        resources[f"{label}InvocationReadPolicy"] = {
+            "Type": "AWS::IAM::Policy",
+            "Properties": {
+                "PolicyName": {
+                    "Fn::Sub": f"aidlc-${{Environment}}-{label.lower()}-invocation-read"
+                },
+                "Roles": [{"Ref": role_parameter}],
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": ["dynamodb:DeleteItem"],
+                            "Resource": [{"Fn::GetAtt": ["InvocationTable", "Arn"]}],
+                        }
+                    ],
                 },
             },
         }
@@ -163,7 +231,21 @@ def synthesize_gateway_template(catalog: GatewayCatalog) -> dict[str, object]:
         "Outputs": {
             "GatewayArn": {"Value": {"Fn::GetAtt": ["EnterpriseGateway", "GatewayArn"]}},
             "GatewayId": {"Value": {"Ref": "EnterpriseGateway"}},
+            "JiraTargetId": {"Value": {"Fn::GetAtt": ["JiraTarget", "TargetId"]}},
+            "ServiceNowTargetId": {"Value": {"Fn::GetAtt": ["ServiceNowTarget", "TargetId"]}},
+            "RemoteGitTargetId": {"Value": {"Fn::GetAtt": ["RemoteGitTarget", "TargetId"]}},
             "Environment": {"Value": {"Ref": "Environment"}},
             "CatalogVersion": {"Value": catalog.version},
+            "InvocationTableName": {"Value": {"Ref": "InvocationTable"}},
         },
     }
+
+
+def _target_schema(schema: Mapping[str, object]) -> dict[str, object]:
+    result = _schema(schema, schema)
+    result["Properties"][INVOCATION_REF_FIELD] = {
+        "Type": "string",
+        "Description": "Opaque one-use reference injected by the authenticated runtime",
+    }
+    result["Required"] = [*result.get("Required", []), INVOCATION_REF_FIELD]
+    return result

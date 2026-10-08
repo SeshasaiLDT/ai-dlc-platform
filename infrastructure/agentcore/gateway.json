@@ -10,20 +10,57 @@
       "Type": "String",
       "Description": "Existing agent harness IAM role name"
     },
-    "JiraTargetFunctionArn": {
+    "JiraTargetFunctionName": {
       "Type": "String",
-      "AllowedPattern": "arn:aws.*:lambda:.*:function:.*"
+      "AllowedPattern": "[a-zA-Z0-9_-]{1,64}"
     },
-    "ServiceNowTargetFunctionArn": {
+    "JiraTargetRoleName": {
       "Type": "String",
-      "AllowedPattern": "arn:aws.*:lambda:.*:function:.*"
+      "AllowedPattern": "[a-zA-Z0-9_+=,.@-]{1,64}"
     },
-    "GitTargetFunctionArn": {
+    "ServiceNowTargetFunctionName": {
       "Type": "String",
-      "AllowedPattern": "arn:aws.*:lambda:.*:function:.*"
+      "AllowedPattern": "[a-zA-Z0-9_-]{1,64}"
+    },
+    "ServiceNowTargetRoleName": {
+      "Type": "String",
+      "AllowedPattern": "[a-zA-Z0-9_+=,.@-]{1,64}"
+    },
+    "GitTargetFunctionName": {
+      "Type": "String",
+      "AllowedPattern": "[a-zA-Z0-9_-]{1,64}"
+    },
+    "GitTargetRoleName": {
+      "Type": "String",
+      "AllowedPattern": "[a-zA-Z0-9_+=,.@-]{1,64}"
     }
   },
   "Resources": {
+    "InvocationTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "reference_hash",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "reference_hash",
+            "KeyType": "HASH"
+          }
+        ],
+        "TimeToLiveSpecification": {
+          "AttributeName": "expires_at",
+          "Enabled": true
+        },
+        "SSESpecification": {
+          "SSEEnabled": true
+        }
+      }
+    },
     "GatewayRole": {
       "Type": "AWS::IAM::Role",
       "Properties": {
@@ -64,13 +101,13 @@
                   ],
                   "Resource": [
                     {
-                      "Ref": "JiraTargetFunctionArn"
+                      "Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${JiraTargetFunctionName}"
                     },
                     {
-                      "Ref": "ServiceNowTargetFunctionArn"
+                      "Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${ServiceNowTargetFunctionName}"
                     },
                     {
-                      "Ref": "GitTargetFunctionArn"
+                      "Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${GitTargetFunctionName}"
                     }
                   ]
                 }
@@ -129,6 +166,38 @@
         }
       }
     },
+    "RuntimeInvocationWritePolicy": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": {
+          "Fn::Sub": "aidlc-${Environment}-invocation-write"
+        },
+        "Roles": [
+          {
+            "Ref": "RuntimeRoleName"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:PutItem"
+              ],
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "InvocationTable",
+                    "Arn"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
     "JiraTarget": {
       "Type": "AWS::BedrockAgentCore::GatewayTarget",
       "Properties": {
@@ -145,7 +214,7 @@
           "Mcp": {
             "Lambda": {
               "LambdaArn": {
-                "Ref": "JiraTargetFunctionArn"
+                "Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${JiraTargetFunctionName}"
               },
               "ToolSchema": {
                 "InlinePayload": [
@@ -167,12 +236,17 @@
                         "body": {
                           "Type": "string",
                           "Description": "Body"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
                         }
                       },
                       "Required": [
                         "project_key",
                         "issue_key",
-                        "body"
+                        "body",
+                        "aidlcInvocationRef"
                       ]
                     }
                   },
@@ -197,12 +271,17 @@
                         },
                         "description": {
                           "Type": "string"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
                         }
                       },
                       "Required": [
                         "project_key",
                         "issue_type",
-                        "summary"
+                        "summary",
+                        "aidlcInvocationRef"
                       ]
                     }
                   },
@@ -220,11 +299,16 @@
                         "issue_key": {
                           "Type": "string",
                           "Description": "Issue Key"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
                         }
                       },
                       "Required": [
                         "project_key",
-                        "issue_key"
+                        "issue_key",
+                        "aidlcInvocationRef"
                       ]
                     }
                   },
@@ -264,10 +348,15 @@
                         },
                         "cursor": {
                           "Type": "string"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
                         }
                       },
                       "Required": [
-                        "project_key"
+                        "project_key",
+                        "aidlcInvocationRef"
                       ]
                     }
                   },
@@ -289,12 +378,17 @@
                         "transition_id": {
                           "Type": "string",
                           "Description": "Transition Id"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
                         }
                       },
                       "Required": [
                         "project_key",
                         "issue_key",
-                        "transition_id"
+                        "transition_id",
+                        "aidlcInvocationRef"
                       ]
                     }
                   },
@@ -318,11 +412,16 @@
                         },
                         "description": {
                           "Type": "string"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
                         }
                       },
                       "Required": [
                         "project_key",
-                        "issue_key"
+                        "issue_key",
+                        "aidlcInvocationRef"
                       ]
                     }
                   }
@@ -330,6 +429,38 @@
               }
             }
           }
+        }
+      }
+    },
+    "JiraInvocationReadPolicy": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": {
+          "Fn::Sub": "aidlc-${Environment}-jira-invocation-read"
+        },
+        "Roles": [
+          {
+            "Ref": "JiraTargetRoleName"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:DeleteItem"
+              ],
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "InvocationTable",
+                    "Arn"
+                  ]
+                }
+              ]
+            }
+          ]
         }
       }
     },
@@ -349,7 +480,7 @@
           "Mcp": {
             "Lambda": {
               "LambdaArn": {
-                "Ref": "ServiceNowTargetFunctionArn"
+                "Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${ServiceNowTargetFunctionName}"
               },
               "ToolSchema": {
                 "InlinePayload": [
@@ -379,6 +510,10 @@
                         "body": {
                           "Type": "string",
                           "Description": "Body"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
                         }
                       },
                       "Required": [
@@ -386,7 +521,8 @@
                         "record_type",
                         "record_id",
                         "channel",
-                        "body"
+                        "body",
+                        "aidlcInvocationRef"
                       ]
                     }
                   },
@@ -411,12 +547,17 @@
                         },
                         "description": {
                           "Type": "string"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
                         }
                       },
                       "Required": [
                         "scope_id",
                         "record_type",
-                        "short_description"
+                        "short_description",
+                        "aidlcInvocationRef"
                       ]
                     }
                   },
@@ -438,12 +579,17 @@
                         "record_id": {
                           "Type": "string",
                           "Description": "Record Id"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
                         }
                       },
                       "Required": [
                         "scope_id",
                         "record_type",
-                        "record_id"
+                        "record_id",
+                        "aidlcInvocationRef"
                       ]
                     }
                   },
@@ -480,11 +626,16 @@
                         },
                         "cursor": {
                           "Type": "string"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
                         }
                       },
                       "Required": [
                         "scope_id",
-                        "record_type"
+                        "record_type",
+                        "aidlcInvocationRef"
                       ]
                     }
                   },
@@ -515,12 +666,17 @@
                         },
                         "state": {
                           "Type": "string"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
                         }
                       },
                       "Required": [
                         "scope_id",
                         "record_type",
-                        "record_id"
+                        "record_id",
+                        "aidlcInvocationRef"
                       ]
                     }
                   }
@@ -528,6 +684,38 @@
               }
             }
           }
+        }
+      }
+    },
+    "ServiceNowInvocationReadPolicy": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": {
+          "Fn::Sub": "aidlc-${Environment}-servicenow-invocation-read"
+        },
+        "Roles": [
+          {
+            "Ref": "ServiceNowTargetRoleName"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:DeleteItem"
+              ],
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "InvocationTable",
+                    "Arn"
+                  ]
+                }
+              ]
+            }
+          ]
         }
       }
     },
@@ -547,7 +735,7 @@
           "Mcp": {
             "Lambda": {
               "LambdaArn": {
-                "Ref": "GitTargetFunctionArn"
+                "Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${GitTargetFunctionName}"
               },
               "ToolSchema": {
                 "InlinePayload": [
@@ -569,12 +757,17 @@
                         "source_branch": {
                           "Type": "string",
                           "Description": "Source Branch"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
                         }
                       },
                       "Required": [
                         "repository_id",
                         "branch",
-                        "source_branch"
+                        "source_branch",
+                        "aidlcInvocationRef"
                       ]
                     }
                   },
@@ -604,13 +797,18 @@
                         "description": {
                           "Type": "string",
                           "Description": "Description"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
                         }
                       },
                       "Required": [
                         "repository_id",
                         "base_branch",
                         "head_branch",
-                        "title"
+                        "title",
+                        "aidlcInvocationRef"
                       ]
                     }
                   },
@@ -628,11 +826,16 @@
                         "branch": {
                           "Type": "string",
                           "Description": "Branch"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
                         }
                       },
                       "Required": [
                         "repository_id",
-                        "branch"
+                        "branch",
+                        "aidlcInvocationRef"
                       ]
                     }
                   },
@@ -654,12 +857,17 @@
                         "head_ref": {
                           "Type": "string",
                           "Description": "Head Ref"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
                         }
                       },
                       "Required": [
                         "repository_id",
                         "base_ref",
-                        "head_ref"
+                        "head_ref",
+                        "aidlcInvocationRef"
                       ]
                     }
                   },
@@ -677,11 +885,16 @@
                         "number": {
                           "Type": "integer",
                           "Description": "Number"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
                         }
                       },
                       "Required": [
                         "repository_id",
-                        "number"
+                        "number",
+                        "aidlcInvocationRef"
                       ]
                     }
                   },
@@ -695,10 +908,15 @@
                         "repository_id": {
                           "Type": "string",
                           "Description": "Repository Id"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
                         }
                       },
                       "Required": [
-                        "repository_id"
+                        "repository_id",
+                        "aidlcInvocationRef"
                       ]
                     }
                   },
@@ -719,10 +937,15 @@
                         },
                         "cursor": {
                           "Type": "string"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
                         }
                       },
                       "Required": [
-                        "repository_id"
+                        "repository_id",
+                        "aidlcInvocationRef"
                       ]
                     }
                   },
@@ -748,13 +971,18 @@
                         "expected_head_sha": {
                           "Type": "string",
                           "Description": "Expected Head Sha"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
                         }
                       },
                       "Required": [
                         "repository_id",
                         "branch",
                         "commit_sha",
-                        "expected_head_sha"
+                        "expected_head_sha",
+                        "aidlcInvocationRef"
                       ]
                     }
                   },
@@ -782,12 +1010,17 @@
                         },
                         "description": {
                           "Type": "string"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
                         }
                       },
                       "Required": [
                         "repository_id",
                         "number",
-                        "head_branch"
+                        "head_branch",
+                        "aidlcInvocationRef"
                       ]
                     }
                   }
@@ -795,6 +1028,38 @@
               }
             }
           }
+        }
+      }
+    },
+    "RemoteGitInvocationReadPolicy": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": {
+          "Fn::Sub": "aidlc-${Environment}-remotegit-invocation-read"
+        },
+        "Roles": [
+          {
+            "Ref": "GitTargetRoleName"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:DeleteItem"
+              ],
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "InvocationTable",
+                    "Arn"
+                  ]
+                }
+              ]
+            }
+          ]
         }
       }
     }
@@ -813,6 +1078,30 @@
         "Ref": "EnterpriseGateway"
       }
     },
+    "JiraTargetId": {
+      "Value": {
+        "Fn::GetAtt": [
+          "JiraTarget",
+          "TargetId"
+        ]
+      }
+    },
+    "ServiceNowTargetId": {
+      "Value": {
+        "Fn::GetAtt": [
+          "ServiceNowTarget",
+          "TargetId"
+        ]
+      }
+    },
+    "RemoteGitTargetId": {
+      "Value": {
+        "Fn::GetAtt": [
+          "RemoteGitTarget",
+          "TargetId"
+        ]
+      }
+    },
     "Environment": {
       "Value": {
         "Ref": "Environment"
@@ -820,6 +1109,11 @@
     },
     "CatalogVersion": {
       "Value": "978764aa73897c56"
+    },
+    "InvocationTableName": {
+      "Value": {
+        "Ref": "InvocationTable"
+      }
     }
   }
 }

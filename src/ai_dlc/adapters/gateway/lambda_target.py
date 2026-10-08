@@ -1,27 +1,20 @@
-"""AgentCore Lambda target adapter; trusted invocation lookup is injected."""
+"""AgentCore Lambda target adapter; consume a one-use trusted runtime reference."""
 
 from collections.abc import Mapping
-from typing import Protocol
 
 from ai_dlc.application.gateway import GatewayRouter, TrustedGatewayContext
+from ai_dlc.application.gateway.invocation import INVOCATION_REF_FIELD, TrustedInvocationRegistry
 from ai_dlc.application.gateway.router import UnknownGatewayToolError
 from ai_dlc.application.git_remote import GIT_REMOTE_MCP_TOOLS
 from ai_dlc.application.jira import JIRA_MCP_TOOLS
 from ai_dlc.application.servicenow import SERVICENOW_MCP_TOOLS
 
 
-class TrustedInvocationLookup(Protocol):
-    def resolve(
-        self, *, gateway_id: str, target_id: str, request_id: str, message_id: str
-    ) -> TrustedGatewayContext:
-        """Load authenticated session context from trusted runtime state."""
-
-
 class GatewayLambdaTarget:
-    """Accept only AWS-injected invocation metadata; event holds business arguments."""
+    """AWS metadata identifies routing; the opaque reference identifies the session."""
 
     def __init__(
-        self, router: GatewayRouter, lookup: TrustedInvocationLookup, *, target_name: str
+        self, router: GatewayRouter, lookup: TrustedInvocationRegistry, *, target_name: str
     ) -> None:
         self._router = router
         self._lookup = lookup
@@ -41,6 +34,7 @@ class GatewayLambdaTarget:
         if not isinstance(metadata, Mapping):
             raise PermissionError("AgentCore invocation metadata required")
         required = (
+            "bedrockAgentCoreMessageVersion",
             "bedrockAgentCoreGatewayId",
             "bedrockAgentCoreTargetId",
             "bedrockAgentCoreAwsRequestId",
@@ -49,18 +43,28 @@ class GatewayLambdaTarget:
         )
         if any(not isinstance(metadata.get(key), str) or not metadata[key] for key in required):
             raise PermissionError("incomplete AgentCore invocation metadata")
+        if metadata["bedrockAgentCoreMessageVersion"] != "1.0":
+            raise PermissionError("unsupported AgentCore message version")
         name = metadata["bedrockAgentCoreToolName"]
         if not name.startswith(f"{self._target_name}___"):
             raise UnknownGatewayToolError("invalid AgentCore tool name")
         tool_name = name.split("___", 1)[1]
         if tool_name not in self._allowed_names:
             raise UnknownGatewayToolError("tool is not registered on this target")
+        reference = event.get(INVOCATION_REF_FIELD)
+        if not isinstance(reference, str):
+            raise PermissionError("trusted invocation reference required")
+        business_arguments = {
+            key: value for key, value in event.items() if key != INVOCATION_REF_FIELD
+        }
         context = self._lookup.resolve(
+            reference,
             gateway_id=metadata["bedrockAgentCoreGatewayId"],
             target_id=metadata["bedrockAgentCoreTargetId"],
-            request_id=metadata["bedrockAgentCoreAwsRequestId"],
+            tool_name=tool_name,
             message_id=metadata["bedrockAgentCoreMcpMessageId"],
+            arguments=business_arguments,
         )
         if not isinstance(context, TrustedGatewayContext):
             raise PermissionError("trusted runtime session missing")
-        return self._router.invoke(tool_name, event, context=context)
+        return self._router.invoke(tool_name, business_arguments, context=context)
