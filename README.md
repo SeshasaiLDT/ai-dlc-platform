@@ -115,6 +115,10 @@ requests, with provider selection and separate local workspace boundaries.
 defines task-scoped checkout, status, diff, patch, build, test, commit, and
 cleanup operations with a trusted handoff to remote Git.
 
+[AgentCore enterprise Gateway](docs/architecture/agentcore-gateway.md)
+defines the derived tool catalog, initiative-aware discovery, trusted dispatch,
+and [CloudFormation stack](infrastructure/agentcore/README.md).
+
 [Human approval policy engine](docs/architecture/human-approval.md)
 defines durable approval state, authorized human decisions, and the execution gate.
 
