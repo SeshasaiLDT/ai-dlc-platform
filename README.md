@@ -43,7 +43,8 @@ This repository intentionally keeps all backend and agent code together while pr
 
 [Identity, initiative, and resource resolution](docs/architecture/resource-resolution.md)
 defines how authenticated users resolve to authorized initiatives and how logical
-Jira/knowledge resources resolve to environment-specific physical resources.
+Jira, knowledge, Git, ServiceNow, and artifact resources resolve to
+environment-specific physical resources through the Resource Binding Registry.
 
 [AWS deployment topology](docs/architecture/aws-deployment-topology.md) defines
 the preferred AWS service boundaries and identifies which services are core
@@ -92,5 +93,39 @@ administration, and logical resource targets.
 [Tool-permission policy](docs/architecture/tool-permission-policy.md)
 defines initiative-specific operation rules layered after base tool authorization.
 
+[Enterprise tool contract](docs/architecture/enterprise-tool-contract.md)
+defines logical tool requests, trusted context injection, normalized results,
+Jira/ServiceNow operations, and separate remote Git and local workspace domains.
+[ADR-004](docs/adr/ADR-004-mcp-tool-boundary.md) records the hybrid MCP,
+direct API, and local execution strategy.
+
+[Governed Jira MCP integration](docs/architecture/jira-mcp-integration.md)
+defines the implemented Jira request/result models, project-scope gates,
+Resource Binding use, provider port, and MCP-facing operation catalog.
+
+[Governed ServiceNow MCP integration](docs/architecture/servicenow-mcp-integration.md)
+defines incident/request tool schemas, scoped permission gates, normalized
+results, Resource Binding use, and the MCP-facing operation catalog.
+
+[Governed remote Git provider integration](docs/architecture/git-provider-integration.md)
+defines logical repository tools for remote metadata, branches, diffs, and pull
+requests, with provider selection and separate local workspace boundaries.
+
+[Local code workspace toolset](docs/architecture/local-workspace-toolset.md)
+defines task-scoped checkout, status, diff, patch, build, test, commit, and
+cleanup operations with a trusted handoff to remote Git.
+
+[AgentCore enterprise Gateway](docs/architecture/agentcore-gateway.md)
+defines the derived tool catalog, initiative-aware discovery, trusted dispatch,
+and [CloudFormation stack](infrastructure/agentcore/README.md).
+
 [Human approval policy engine](docs/architecture/human-approval.md)
 defines durable approval state, authorized human decisions, and the execution gate.
+
+[Authorization regression tests](docs/testing/authorization-regression.md)
+exercise cross-initiative isolation, tool delegation, approval replay, and audit
+failure behavior in the full CI test suite.
+
+[Integration contract tests](docs/testing/integration-contract-tests.md)
+exercise the shared enterprise trust/error contract, Gateway correlation and IaC,
+and local-workspace commit handoffs without production or network dependencies.

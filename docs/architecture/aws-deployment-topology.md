@@ -41,6 +41,9 @@ Independent capability agents run in Bedrock AgentCore Runtime.
 Agent container images are stored in ECR.
 
 AgentCore Gateway is used for governed MCP/tool access where appropriate.
+The [Gateway configuration](agentcore-gateway.md) registers the approved
+enterprise catalog through CloudFormation and keeps local workspace execution
+inside the trusted runtime.
 
 Do not duplicate agent execution onto ECS/Fargate unless a future workload explicitly requires another compute boundary.
 

@@ -1,0 +1,1119 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "AI-DLC AgentCore enterprise gateway catalog 978764aa73897c56",
+  "Parameters": {
+    "Environment": {
+      "Type": "String",
+      "AllowedPattern": "[a-z][a-z0-9-]*"
+    },
+    "RuntimeRoleName": {
+      "Type": "String",
+      "Description": "Existing agent harness IAM role name"
+    },
+    "JiraTargetFunctionName": {
+      "Type": "String",
+      "AllowedPattern": "[a-zA-Z0-9_-]{1,64}"
+    },
+    "JiraTargetRoleName": {
+      "Type": "String",
+      "AllowedPattern": "[a-zA-Z0-9_+=,.@-]{1,64}"
+    },
+    "ServiceNowTargetFunctionName": {
+      "Type": "String",
+      "AllowedPattern": "[a-zA-Z0-9_-]{1,64}"
+    },
+    "ServiceNowTargetRoleName": {
+      "Type": "String",
+      "AllowedPattern": "[a-zA-Z0-9_+=,.@-]{1,64}"
+    },
+    "GitTargetFunctionName": {
+      "Type": "String",
+      "AllowedPattern": "[a-zA-Z0-9_-]{1,64}"
+    },
+    "GitTargetRoleName": {
+      "Type": "String",
+      "AllowedPattern": "[a-zA-Z0-9_+=,.@-]{1,64}"
+    }
+  },
+  "Resources": {
+    "InvocationTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "reference_hash",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "reference_hash",
+            "KeyType": "HASH"
+          }
+        ],
+        "TimeToLiveSpecification": {
+          "AttributeName": "expires_at",
+          "Enabled": true
+        },
+        "SSESpecification": {
+          "SSEEnabled": true
+        }
+      }
+    },
+    "GatewayRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": "sts:AssumeRole",
+              "Principal": {
+                "Service": "bedrock-agentcore.amazonaws.com"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": {
+                    "Ref": "AWS::AccountId"
+                  }
+                },
+                "ArnLike": {
+                  "aws:SourceArn": {
+                    "Fn::Sub": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:gateway/*"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "InvokeApprovedEnterpriseTargets",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "lambda:InvokeFunction"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${JiraTargetFunctionName}"
+                    },
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${ServiceNowTargetFunctionName}"
+                    },
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${GitTargetFunctionName}"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "EnterpriseGateway": {
+      "Type": "AWS::BedrockAgentCore::Gateway",
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "aidlc-${Environment}-tools"
+        },
+        "Description": "Governed AI-DLC enterprise tool gateway",
+        "AuthorizerType": "AWS_IAM",
+        "ProtocolType": "MCP",
+        "RoleArn": {
+          "Fn::GetAtt": [
+            "GatewayRole",
+            "Arn"
+          ]
+        }
+      }
+    },
+    "RuntimeGatewayInvokePolicy": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": {
+          "Fn::Sub": "aidlc-${Environment}-gateway-invoke"
+        },
+        "Roles": [
+          {
+            "Ref": "RuntimeRoleName"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "bedrock-agentcore:InvokeGateway"
+              ],
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "EnterpriseGateway",
+                    "GatewayArn"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "RuntimeInvocationWritePolicy": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": {
+          "Fn::Sub": "aidlc-${Environment}-invocation-write"
+        },
+        "Roles": [
+          {
+            "Ref": "RuntimeRoleName"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:PutItem"
+              ],
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "InvocationTable",
+                    "Arn"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "JiraTarget": {
+      "Type": "AWS::BedrockAgentCore::GatewayTarget",
+      "Properties": {
+        "Name": "Jira",
+        "GatewayIdentifier": {
+          "Ref": "EnterpriseGateway"
+        },
+        "CredentialProviderConfigurations": [
+          {
+            "CredentialProviderType": "GATEWAY_IAM_ROLE"
+          }
+        ],
+        "TargetConfiguration": {
+          "Mcp": {
+            "Lambda": {
+              "LambdaArn": {
+                "Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${JiraTargetFunctionName}"
+              },
+              "ToolSchema": {
+                "InlinePayload": [
+                  {
+                    "Name": "jira_add_comment",
+                    "Description": "Governed jira add_comment",
+                    "InputSchema": {
+                      "Type": "object",
+                      "Description": "AddJiraCommentRequest",
+                      "Properties": {
+                        "project_key": {
+                          "Type": "string",
+                          "Description": "Project Key"
+                        },
+                        "issue_key": {
+                          "Type": "string",
+                          "Description": "Issue Key"
+                        },
+                        "body": {
+                          "Type": "string",
+                          "Description": "Body"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
+                        }
+                      },
+                      "Required": [
+                        "project_key",
+                        "issue_key",
+                        "body",
+                        "aidlcInvocationRef"
+                      ]
+                    }
+                  },
+                  {
+                    "Name": "jira_create_issue",
+                    "Description": "Governed jira create_issue",
+                    "InputSchema": {
+                      "Type": "object",
+                      "Description": "CreateJiraIssueRequest",
+                      "Properties": {
+                        "project_key": {
+                          "Type": "string",
+                          "Description": "Project Key"
+                        },
+                        "issue_type": {
+                          "Type": "string",
+                          "Description": "Issue Type"
+                        },
+                        "summary": {
+                          "Type": "string",
+                          "Description": "Summary"
+                        },
+                        "description": {
+                          "Type": "string"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
+                        }
+                      },
+                      "Required": [
+                        "project_key",
+                        "issue_type",
+                        "summary",
+                        "aidlcInvocationRef"
+                      ]
+                    }
+                  },
+                  {
+                    "Name": "jira_get_issue",
+                    "Description": "Governed jira read_issue",
+                    "InputSchema": {
+                      "Type": "object",
+                      "Description": "GetJiraIssueRequest",
+                      "Properties": {
+                        "project_key": {
+                          "Type": "string",
+                          "Description": "Project Key"
+                        },
+                        "issue_key": {
+                          "Type": "string",
+                          "Description": "Issue Key"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
+                        }
+                      },
+                      "Required": [
+                        "project_key",
+                        "issue_key",
+                        "aidlcInvocationRef"
+                      ]
+                    }
+                  },
+                  {
+                    "Name": "jira_search_issues",
+                    "Description": "Governed jira search",
+                    "InputSchema": {
+                      "Type": "object",
+                      "Description": "SearchJiraIssuesRequest",
+                      "Properties": {
+                        "project_key": {
+                          "Type": "string",
+                          "Description": "Project Key"
+                        },
+                        "text": {
+                          "Type": "string"
+                        },
+                        "status": {
+                          "Type": "string"
+                        },
+                        "issue_type": {
+                          "Type": "string"
+                        },
+                        "assignee": {
+                          "Type": "string"
+                        },
+                        "labels": {
+                          "Type": "array",
+                          "Description": "Labels",
+                          "Items": {
+                            "Type": "string"
+                          }
+                        },
+                        "page_size": {
+                          "Type": "integer",
+                          "Description": "Page Size"
+                        },
+                        "cursor": {
+                          "Type": "string"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
+                        }
+                      },
+                      "Required": [
+                        "project_key",
+                        "aidlcInvocationRef"
+                      ]
+                    }
+                  },
+                  {
+                    "Name": "jira_transition_issue",
+                    "Description": "Governed jira transition_issue",
+                    "InputSchema": {
+                      "Type": "object",
+                      "Description": "TransitionJiraIssueRequest",
+                      "Properties": {
+                        "project_key": {
+                          "Type": "string",
+                          "Description": "Project Key"
+                        },
+                        "issue_key": {
+                          "Type": "string",
+                          "Description": "Issue Key"
+                        },
+                        "transition_id": {
+                          "Type": "string",
+                          "Description": "Transition Id"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
+                        }
+                      },
+                      "Required": [
+                        "project_key",
+                        "issue_key",
+                        "transition_id",
+                        "aidlcInvocationRef"
+                      ]
+                    }
+                  },
+                  {
+                    "Name": "jira_update_issue",
+                    "Description": "Governed jira update_issue",
+                    "InputSchema": {
+                      "Type": "object",
+                      "Description": "UpdateJiraIssueRequest",
+                      "Properties": {
+                        "project_key": {
+                          "Type": "string",
+                          "Description": "Project Key"
+                        },
+                        "issue_key": {
+                          "Type": "string",
+                          "Description": "Issue Key"
+                        },
+                        "summary": {
+                          "Type": "string"
+                        },
+                        "description": {
+                          "Type": "string"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
+                        }
+                      },
+                      "Required": [
+                        "project_key",
+                        "issue_key",
+                        "aidlcInvocationRef"
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "JiraInvocationReadPolicy": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": {
+          "Fn::Sub": "aidlc-${Environment}-jira-invocation-read"
+        },
+        "Roles": [
+          {
+            "Ref": "JiraTargetRoleName"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:DeleteItem"
+              ],
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "InvocationTable",
+                    "Arn"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "ServiceNowTarget": {
+      "Type": "AWS::BedrockAgentCore::GatewayTarget",
+      "Properties": {
+        "Name": "ServiceNow",
+        "GatewayIdentifier": {
+          "Ref": "EnterpriseGateway"
+        },
+        "CredentialProviderConfigurations": [
+          {
+            "CredentialProviderType": "GATEWAY_IAM_ROLE"
+          }
+        ],
+        "TargetConfiguration": {
+          "Mcp": {
+            "Lambda": {
+              "LambdaArn": {
+                "Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${ServiceNowTargetFunctionName}"
+              },
+              "ToolSchema": {
+                "InlinePayload": [
+                  {
+                    "Name": "servicenow_add_comment",
+                    "Description": "Governed servicenow add_comment",
+                    "InputSchema": {
+                      "Type": "object",
+                      "Description": "AddServiceNowCommentRequest",
+                      "Properties": {
+                        "scope_id": {
+                          "Type": "string",
+                          "Description": "Scope Id"
+                        },
+                        "record_type": {
+                          "Type": "string",
+                          "Description": "RecordType"
+                        },
+                        "record_id": {
+                          "Type": "string",
+                          "Description": "Record Id"
+                        },
+                        "channel": {
+                          "Type": "string",
+                          "Description": "JournalChannel"
+                        },
+                        "body": {
+                          "Type": "string",
+                          "Description": "Body"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
+                        }
+                      },
+                      "Required": [
+                        "scope_id",
+                        "record_type",
+                        "record_id",
+                        "channel",
+                        "body",
+                        "aidlcInvocationRef"
+                      ]
+                    }
+                  },
+                  {
+                    "Name": "servicenow_create_record",
+                    "Description": "Governed servicenow create_record",
+                    "InputSchema": {
+                      "Type": "object",
+                      "Description": "CreateServiceNowRecordRequest",
+                      "Properties": {
+                        "scope_id": {
+                          "Type": "string",
+                          "Description": "Scope Id"
+                        },
+                        "record_type": {
+                          "Type": "string",
+                          "Description": "RecordType"
+                        },
+                        "short_description": {
+                          "Type": "string",
+                          "Description": "Short Description"
+                        },
+                        "description": {
+                          "Type": "string"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
+                        }
+                      },
+                      "Required": [
+                        "scope_id",
+                        "record_type",
+                        "short_description",
+                        "aidlcInvocationRef"
+                      ]
+                    }
+                  },
+                  {
+                    "Name": "servicenow_get_record",
+                    "Description": "Governed servicenow read_record",
+                    "InputSchema": {
+                      "Type": "object",
+                      "Description": "GetServiceNowRecordRequest",
+                      "Properties": {
+                        "scope_id": {
+                          "Type": "string",
+                          "Description": "Scope Id"
+                        },
+                        "record_type": {
+                          "Type": "string",
+                          "Description": "RecordType"
+                        },
+                        "record_id": {
+                          "Type": "string",
+                          "Description": "Record Id"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
+                        }
+                      },
+                      "Required": [
+                        "scope_id",
+                        "record_type",
+                        "record_id",
+                        "aidlcInvocationRef"
+                      ]
+                    }
+                  },
+                  {
+                    "Name": "servicenow_search_records",
+                    "Description": "Governed servicenow search",
+                    "InputSchema": {
+                      "Type": "object",
+                      "Description": "SearchServiceNowRecordsRequest",
+                      "Properties": {
+                        "scope_id": {
+                          "Type": "string",
+                          "Description": "Scope Id"
+                        },
+                        "record_type": {
+                          "Type": "string",
+                          "Description": "RecordType"
+                        },
+                        "number": {
+                          "Type": "string"
+                        },
+                        "state": {
+                          "Type": "string"
+                        },
+                        "text": {
+                          "Type": "string"
+                        },
+                        "assignment_group": {
+                          "Type": "string"
+                        },
+                        "page_size": {
+                          "Type": "integer",
+                          "Description": "Page Size"
+                        },
+                        "cursor": {
+                          "Type": "string"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
+                        }
+                      },
+                      "Required": [
+                        "scope_id",
+                        "record_type",
+                        "aidlcInvocationRef"
+                      ]
+                    }
+                  },
+                  {
+                    "Name": "servicenow_update_record",
+                    "Description": "Governed servicenow update_record",
+                    "InputSchema": {
+                      "Type": "object",
+                      "Description": "UpdateServiceNowRecordRequest",
+                      "Properties": {
+                        "scope_id": {
+                          "Type": "string",
+                          "Description": "Scope Id"
+                        },
+                        "record_type": {
+                          "Type": "string",
+                          "Description": "RecordType"
+                        },
+                        "record_id": {
+                          "Type": "string",
+                          "Description": "Record Id"
+                        },
+                        "short_description": {
+                          "Type": "string"
+                        },
+                        "description": {
+                          "Type": "string"
+                        },
+                        "state": {
+                          "Type": "string"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
+                        }
+                      },
+                      "Required": [
+                        "scope_id",
+                        "record_type",
+                        "record_id",
+                        "aidlcInvocationRef"
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "ServiceNowInvocationReadPolicy": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": {
+          "Fn::Sub": "aidlc-${Environment}-servicenow-invocation-read"
+        },
+        "Roles": [
+          {
+            "Ref": "ServiceNowTargetRoleName"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:DeleteItem"
+              ],
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "InvocationTable",
+                    "Arn"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "RemoteGitTarget": {
+      "Type": "AWS::BedrockAgentCore::GatewayTarget",
+      "Properties": {
+        "Name": "RemoteGit",
+        "GatewayIdentifier": {
+          "Ref": "EnterpriseGateway"
+        },
+        "CredentialProviderConfigurations": [
+          {
+            "CredentialProviderType": "GATEWAY_IAM_ROLE"
+          }
+        ],
+        "TargetConfiguration": {
+          "Mcp": {
+            "Lambda": {
+              "LambdaArn": {
+                "Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${GitTargetFunctionName}"
+              },
+              "ToolSchema": {
+                "InlinePayload": [
+                  {
+                    "Name": "git_remote_create_branch",
+                    "Description": "Governed git create_branch",
+                    "InputSchema": {
+                      "Type": "object",
+                      "Description": "CreateBranchRequest",
+                      "Properties": {
+                        "repository_id": {
+                          "Type": "string",
+                          "Description": "Repository Id"
+                        },
+                        "branch": {
+                          "Type": "string",
+                          "Description": "Branch"
+                        },
+                        "source_branch": {
+                          "Type": "string",
+                          "Description": "Source Branch"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
+                        }
+                      },
+                      "Required": [
+                        "repository_id",
+                        "branch",
+                        "source_branch",
+                        "aidlcInvocationRef"
+                      ]
+                    }
+                  },
+                  {
+                    "Name": "git_remote_create_pull_request",
+                    "Description": "Governed git create_pr",
+                    "InputSchema": {
+                      "Type": "object",
+                      "Description": "CreatePullRequestRequest",
+                      "Properties": {
+                        "repository_id": {
+                          "Type": "string",
+                          "Description": "Repository Id"
+                        },
+                        "base_branch": {
+                          "Type": "string",
+                          "Description": "Base Branch"
+                        },
+                        "head_branch": {
+                          "Type": "string",
+                          "Description": "Head Branch"
+                        },
+                        "title": {
+                          "Type": "string",
+                          "Description": "Title"
+                        },
+                        "description": {
+                          "Type": "string",
+                          "Description": "Description"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
+                        }
+                      },
+                      "Required": [
+                        "repository_id",
+                        "base_branch",
+                        "head_branch",
+                        "title",
+                        "aidlcInvocationRef"
+                      ]
+                    }
+                  },
+                  {
+                    "Name": "git_remote_get_branch",
+                    "Description": "Governed git read_branch",
+                    "InputSchema": {
+                      "Type": "object",
+                      "Description": "GetBranchRequest",
+                      "Properties": {
+                        "repository_id": {
+                          "Type": "string",
+                          "Description": "Repository Id"
+                        },
+                        "branch": {
+                          "Type": "string",
+                          "Description": "Branch"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
+                        }
+                      },
+                      "Required": [
+                        "repository_id",
+                        "branch",
+                        "aidlcInvocationRef"
+                      ]
+                    }
+                  },
+                  {
+                    "Name": "git_remote_get_diff",
+                    "Description": "Governed git read_diff",
+                    "InputSchema": {
+                      "Type": "object",
+                      "Description": "GetRemoteDiffRequest",
+                      "Properties": {
+                        "repository_id": {
+                          "Type": "string",
+                          "Description": "Repository Id"
+                        },
+                        "base_ref": {
+                          "Type": "string",
+                          "Description": "Base Ref"
+                        },
+                        "head_ref": {
+                          "Type": "string",
+                          "Description": "Head Ref"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
+                        }
+                      },
+                      "Required": [
+                        "repository_id",
+                        "base_ref",
+                        "head_ref",
+                        "aidlcInvocationRef"
+                      ]
+                    }
+                  },
+                  {
+                    "Name": "git_remote_get_pull_request",
+                    "Description": "Governed git read_pr",
+                    "InputSchema": {
+                      "Type": "object",
+                      "Description": "GetPullRequestRequest",
+                      "Properties": {
+                        "repository_id": {
+                          "Type": "string",
+                          "Description": "Repository Id"
+                        },
+                        "number": {
+                          "Type": "integer",
+                          "Description": "Number"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
+                        }
+                      },
+                      "Required": [
+                        "repository_id",
+                        "number",
+                        "aidlcInvocationRef"
+                      ]
+                    }
+                  },
+                  {
+                    "Name": "git_remote_get_repository",
+                    "Description": "Governed git read_repository",
+                    "InputSchema": {
+                      "Type": "object",
+                      "Description": "GetRepositoryRequest",
+                      "Properties": {
+                        "repository_id": {
+                          "Type": "string",
+                          "Description": "Repository Id"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
+                        }
+                      },
+                      "Required": [
+                        "repository_id",
+                        "aidlcInvocationRef"
+                      ]
+                    }
+                  },
+                  {
+                    "Name": "git_remote_list_branches",
+                    "Description": "Governed git list_branches",
+                    "InputSchema": {
+                      "Type": "object",
+                      "Description": "ListBranchesRequest",
+                      "Properties": {
+                        "repository_id": {
+                          "Type": "string",
+                          "Description": "Repository Id"
+                        },
+                        "page_size": {
+                          "Type": "integer",
+                          "Description": "Page Size"
+                        },
+                        "cursor": {
+                          "Type": "string"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
+                        }
+                      },
+                      "Required": [
+                        "repository_id",
+                        "aidlcInvocationRef"
+                      ]
+                    }
+                  },
+                  {
+                    "Name": "git_remote_update_branch",
+                    "Description": "Governed git push",
+                    "InputSchema": {
+                      "Type": "object",
+                      "Description": "UpdateBranchRequest",
+                      "Properties": {
+                        "repository_id": {
+                          "Type": "string",
+                          "Description": "Repository Id"
+                        },
+                        "branch": {
+                          "Type": "string",
+                          "Description": "Branch"
+                        },
+                        "commit_sha": {
+                          "Type": "string",
+                          "Description": "Commit Sha"
+                        },
+                        "expected_head_sha": {
+                          "Type": "string",
+                          "Description": "Expected Head Sha"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
+                        }
+                      },
+                      "Required": [
+                        "repository_id",
+                        "branch",
+                        "commit_sha",
+                        "expected_head_sha",
+                        "aidlcInvocationRef"
+                      ]
+                    }
+                  },
+                  {
+                    "Name": "git_remote_update_pull_request",
+                    "Description": "Governed git update_pr",
+                    "InputSchema": {
+                      "Type": "object",
+                      "Description": "UpdatePullRequestRequest",
+                      "Properties": {
+                        "repository_id": {
+                          "Type": "string",
+                          "Description": "Repository Id"
+                        },
+                        "number": {
+                          "Type": "integer",
+                          "Description": "Number"
+                        },
+                        "head_branch": {
+                          "Type": "string",
+                          "Description": "Head Branch"
+                        },
+                        "title": {
+                          "Type": "string"
+                        },
+                        "description": {
+                          "Type": "string"
+                        },
+                        "aidlcInvocationRef": {
+                          "Type": "string",
+                          "Description": "Opaque one-use reference injected by the authenticated runtime"
+                        }
+                      },
+                      "Required": [
+                        "repository_id",
+                        "number",
+                        "head_branch",
+                        "aidlcInvocationRef"
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "RemoteGitInvocationReadPolicy": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": {
+          "Fn::Sub": "aidlc-${Environment}-remotegit-invocation-read"
+        },
+        "Roles": [
+          {
+            "Ref": "GitTargetRoleName"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:DeleteItem"
+              ],
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "InvocationTable",
+                    "Arn"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "GatewayArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "EnterpriseGateway",
+          "GatewayArn"
+        ]
+      }
+    },
+    "GatewayId": {
+      "Value": {
+        "Ref": "EnterpriseGateway"
+      }
+    },
+    "JiraTargetId": {
+      "Value": {
+        "Fn::GetAtt": [
+          "JiraTarget",
+          "TargetId"
+        ]
+      }
+    },
+    "ServiceNowTargetId": {
+      "Value": {
+        "Fn::GetAtt": [
+          "ServiceNowTarget",
+          "TargetId"
+        ]
+      }
+    },
+    "RemoteGitTargetId": {
+      "Value": {
+        "Fn::GetAtt": [
+          "RemoteGitTarget",
+          "TargetId"
+        ]
+      }
+    },
+    "Environment": {
+      "Value": {
+        "Ref": "Environment"
+      }
+    },
+    "CatalogVersion": {
+      "Value": "978764aa73897c56"
+    },
+    "InvocationTableName": {
+      "Value": {
+        "Ref": "InvocationTable"
+      }
+    }
+  }
+}

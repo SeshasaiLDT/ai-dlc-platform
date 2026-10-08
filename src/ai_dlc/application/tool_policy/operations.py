@@ -30,13 +30,23 @@ class JiraOperation(StrEnum):
 class GitOperation(StrEnum):
     READ_REPOSITORY = "read_repository"
     READ_BRANCH = "read_branch"
+    LIST_BRANCHES = "list_branches"
     READ_DIFF = "read_diff"
+    READ_PR = "read_pr"
     CREATE_BRANCH = "create_branch"
     COMMIT = "commit"
     PUSH = "push"
     CREATE_PR = "create_pr"
     UPDATE_PR = "update_pr"
     DELETE_BRANCH = "delete_branch"
+    PREPARE_WORKSPACE = "prepare_workspace"
+    LOCAL_CHECKOUT = "local_checkout"
+    LOCAL_STATUS = "local_status"
+    LOCAL_DIFF = "local_diff"
+    LOCAL_APPLY_PATCH = "local_apply_patch"
+    LOCAL_BUILD = "local_build"
+    LOCAL_TEST = "local_test"
+    LOCAL_CLEANUP = "local_cleanup"
 
 
 class ServiceNowOperation(StrEnum):
@@ -60,13 +70,23 @@ _RISK: dict[tuple[ToolKind, str], ToolOperationRisk] = {
     (ToolKind.JIRA, JiraOperation.DELETE_ISSUE): ToolOperationRisk.DESTRUCTIVE,
     (ToolKind.GIT, GitOperation.READ_REPOSITORY): ToolOperationRisk.READ,
     (ToolKind.GIT, GitOperation.READ_BRANCH): ToolOperationRisk.READ,
+    (ToolKind.GIT, GitOperation.LIST_BRANCHES): ToolOperationRisk.READ,
     (ToolKind.GIT, GitOperation.READ_DIFF): ToolOperationRisk.READ,
+    (ToolKind.GIT, GitOperation.READ_PR): ToolOperationRisk.READ,
     (ToolKind.GIT, GitOperation.CREATE_BRANCH): ToolOperationRisk.WRITE,
     (ToolKind.GIT, GitOperation.COMMIT): ToolOperationRisk.WRITE,
     (ToolKind.GIT, GitOperation.PUSH): ToolOperationRisk.WRITE,
     (ToolKind.GIT, GitOperation.CREATE_PR): ToolOperationRisk.WRITE,
     (ToolKind.GIT, GitOperation.UPDATE_PR): ToolOperationRisk.WRITE,
     (ToolKind.GIT, GitOperation.DELETE_BRANCH): ToolOperationRisk.DESTRUCTIVE,
+    (ToolKind.GIT, GitOperation.PREPARE_WORKSPACE): ToolOperationRisk.READ,
+    (ToolKind.GIT, GitOperation.LOCAL_CHECKOUT): ToolOperationRisk.WRITE,
+    (ToolKind.GIT, GitOperation.LOCAL_STATUS): ToolOperationRisk.READ,
+    (ToolKind.GIT, GitOperation.LOCAL_DIFF): ToolOperationRisk.READ,
+    (ToolKind.GIT, GitOperation.LOCAL_APPLY_PATCH): ToolOperationRisk.WRITE,
+    (ToolKind.GIT, GitOperation.LOCAL_BUILD): ToolOperationRisk.WRITE,
+    (ToolKind.GIT, GitOperation.LOCAL_TEST): ToolOperationRisk.WRITE,
+    (ToolKind.GIT, GitOperation.LOCAL_CLEANUP): ToolOperationRisk.WRITE,
     (ToolKind.SERVICENOW, ServiceNowOperation.SEARCH): ToolOperationRisk.READ,
     (ToolKind.SERVICENOW, ServiceNowOperation.READ_RECORD): ToolOperationRisk.READ,
     (ToolKind.SERVICENOW, ServiceNowOperation.ADD_COMMENT): ToolOperationRisk.WRITE,

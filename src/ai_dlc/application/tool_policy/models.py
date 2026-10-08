@@ -87,7 +87,13 @@ class ToolPolicyRequest:
             raise ValueError("operation and logical target do not match")
         if (
             kind is ToolKind.GIT
-            and self.operation not in (GitOperation.READ_REPOSITORY, GitOperation.READ_DIFF)
+            and self.operation
+            not in (
+                GitOperation.READ_REPOSITORY,
+                GitOperation.LIST_BRANCHES,
+                GitOperation.READ_DIFF,
+                GitOperation.READ_PR,
+            )
             and self.target.branch_name is None
         ):
             raise ValueError("Git operation requires a branch target")
