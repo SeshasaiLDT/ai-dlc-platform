@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from math import isfinite
 from typing import TypeVar
 
 from .models import AgentContext, ExecutionError, ExecutionResult, ExecutionStatus, Invocation
@@ -19,11 +20,25 @@ class _DeadlineExceeded(Exception):
     pass
 
 
+class _CleanupTimedOut(Exception):
+    pass
+
+
 class LifecycleRunner:
     """Run one agent instance for one trusted invocation; owns no execution state."""
 
-    def __init__(self, *, clock: Callable[[], datetime] | None = None) -> None:
+    def __init__(
+        self, *, clock: Callable[[], datetime] | None = None, cleanup_timeout_seconds: float = 5.0
+    ) -> None:
+        if (
+            isinstance(cleanup_timeout_seconds, bool)
+            or not isinstance(cleanup_timeout_seconds, (int, float))
+            or not isfinite(cleanup_timeout_seconds)
+            or cleanup_timeout_seconds <= 0
+        ):
+            raise ValueError("cleanup_timeout_seconds must be a positive finite number")
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._cleanup_timeout_seconds = float(cleanup_timeout_seconds)
 
     async def run(
         self, agent: AgentLifecycle, request: Invocation, *, context: AgentContext
@@ -62,17 +77,39 @@ class LifecycleRunner:
             result = self._failure(context, code, f"Agent {phase} failed")
         finally:
             try:
-                await agent.shutdown()
+                await self._shutdown(agent)
+            except _CleanupTimedOut:
+                result = self._cleanup_failure(context, result, "cleanup_timed_out")
             except Exception:
-                if result is None or result.status is ExecutionStatus.SUCCEEDED:
-                    result = self._failure(context, "cleanup_failed", "Agent cleanup failed")
-                else:
-                    metadata = dict(result.metadata or {})
-                    metadata["cleanup_failed"] = True
-                    result = result.model_copy(update={"metadata": metadata})
+                result = self._cleanup_failure(context, result, "cleanup_failed")
 
         assert result is not None
         return result
+
+    async def _shutdown(self, agent: AgentLifecycle) -> None:
+        task = asyncio.create_task(agent.shutdown())
+        try:
+            done, _ = await asyncio.wait({task}, timeout=self._cleanup_timeout_seconds)
+            if task not in done:
+                raise _CleanupTimedOut
+            await task
+        finally:
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    @classmethod
+    def _cleanup_failure(
+        cls, context: AgentContext, primary: ExecutionResult | None, code: str
+    ) -> ExecutionResult:
+        if primary is None or primary.status is ExecutionStatus.SUCCEEDED:
+            message = (
+                "Agent cleanup timed out" if code == "cleanup_timed_out" else "Agent cleanup failed"
+            )
+            return cls._failure(context, code, message)
+        metadata = dict(primary.metadata or {})
+        metadata.update(cleanup_failed=True, cleanup_error_code=code)
+        return primary.model_copy(update={"metadata": metadata})
 
     async def _controlled(self, operation: Callable[[], Awaitable[T]], context: AgentContext) -> T:
         self._check(context)

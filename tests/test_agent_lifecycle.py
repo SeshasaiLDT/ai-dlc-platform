@@ -151,7 +151,94 @@ def test_invalid_completion_and_cleanup_failure() -> None:
     agent.execute_error = RuntimeError("primary")
     result = run(agent)
     assert result.error.code == "execution_failed"
-    assert result.metadata == {"cleanup_failed": True}
+    assert result.metadata == {"cleanup_failed": True, "cleanup_error_code": "cleanup_failed"}
+
+
+def test_shutdown_timeout_is_structured_and_cancels_local_cleanup() -> None:
+    async def scenario() -> None:
+        cancelled = asyncio.Event()
+
+        class BlockingShutdown(FakeAgent):
+            async def shutdown(self) -> None:
+                self.calls.append("shutdown")
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    cancelled.set()
+
+        agent = BlockingShutdown()
+        result = await LifecycleRunner(cleanup_timeout_seconds=0.02).run(
+            agent, Invocation(input={}), context=context()
+        )
+        assert result.status is ExecutionStatus.FAILED
+        assert result.error.code == "cleanup_timed_out"
+        assert result.request_id == "request-1"
+        assert cancelled.is_set()
+        assert agent.calls == ["initialize", "execute", "shutdown"]
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("primary", ["execution_failed", "deadline_exceeded"])
+def test_shutdown_timeout_preserves_primary_failure(primary: str) -> None:
+    class BlockingShutdown(FakeAgent):
+        async def shutdown(self) -> None:
+            await asyncio.Event().wait()
+
+    agent = BlockingShutdown()
+    ctx = context()
+    if primary == "execution_failed":
+        agent.execute_error = RuntimeError("internal detail")
+    else:
+        ctx = context(deadline=datetime.now(UTC) - timedelta(seconds=1))
+    result = asyncio.run(
+        LifecycleRunner(cleanup_timeout_seconds=0.02).run(agent, Invocation(input={}), context=ctx)
+    )
+    assert result.error.code == primary
+    assert result.metadata == {
+        "cleanup_failed": True,
+        "cleanup_error_code": "cleanup_timed_out",
+    }
+
+
+def test_shutdown_raised_timeout_error_is_not_a_cleanup_deadline() -> None:
+    agent = FakeAgent()
+    agent.shutdown_error = TimeoutError("adapter failure")
+    result = run(agent)
+    assert result.error.code == "cleanup_failed"
+
+
+def test_external_cancellation_during_shutdown_propagates_and_cancels_cleanup() -> None:
+    async def scenario() -> None:
+        entered = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        class BlockingShutdown(FakeAgent):
+            async def shutdown(self) -> None:
+                entered.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    cancelled.set()
+
+        task = asyncio.create_task(
+            LifecycleRunner(cleanup_timeout_seconds=1).run(
+                BlockingShutdown(), Invocation(input={}), context=context()
+            )
+        )
+        await entered.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert cancelled.is_set()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("value", [0, -1, float("inf"), float("nan"), True])
+def test_cleanup_timeout_must_be_positive_and_finite(value: float) -> None:
+    with pytest.raises(ValueError):
+        LifecycleRunner(cleanup_timeout_seconds=value)
 
 
 def test_cancellation_before_execution_and_timeout_before_execution() -> None:
