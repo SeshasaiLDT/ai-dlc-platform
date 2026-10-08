@@ -28,12 +28,14 @@ class RoutingOutcome(StrEnum):
 class RoutingRule(StrEnum):
     EXPLICIT_CAPABILITY = "explicit_capability"
     CONFIGURED_WORKFLOW = "configured_workflow"
+    MODEL_SUGGESTED = "model_suggested"  # untrusted suggestion that passed the same checks
     NONE = "none"
 
 
 class RoutingReason(StrEnum):
     EXPLICIT_CAPABILITY_SELECTED = "explicit_capability_selected"
     WORKFLOW_MATCHED = "workflow_matched"
+    MODEL_SUGGESTION_ACCEPTED = "model_suggestion_accepted"
     CAPABILITY_NOT_AUTHORIZED = "capability_not_authorized"
     UNKNOWN_CAPABILITY = "unknown_capability"
     CAPABILITY_NOT_CONFIGURED = "capability_not_configured"

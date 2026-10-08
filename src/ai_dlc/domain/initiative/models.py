@@ -207,6 +207,21 @@ class CapabilityRoute(ProfileModel):
 
     capability: Capability
     enabled: bool = True
+    # Short trusted text shown to the classifier; never user- or model-supplied.
+    description: (
+        Annotated[str, StringConstraints(max_length=200, pattern=r"^[^\r\n<>]*$")] | None
+    ) = None
+
+
+class ClassifierPolicy(ProfileModel):
+    """Opt-in LLM fallback for requests deterministic routing could not resolve."""
+
+    enabled: bool = False
+    # Uncalibrated score; a conservative default. Calibration is future work.
+    min_confidence: Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)] = 0.8
+    allow_ambiguous: bool = False
+    max_alternatives: Annotated[int, Field(ge=0, le=5)] = 3
+    max_input_chars: Annotated[int, Field(ge=100, le=20000)] = 4000
 
 
 class WorkflowRoute(ProfileModel):
@@ -224,6 +239,7 @@ class Routing(ProfileModel):
 
     capabilities: tuple[CapabilityRoute, ...] = ()
     workflows: tuple[WorkflowRoute, ...] = ()
+    classifier: ClassifierPolicy = Field(default_factory=ClassifierPolicy)
 
     @field_validator("capabilities")
     @classmethod

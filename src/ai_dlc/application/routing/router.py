@@ -64,6 +64,70 @@ class DeterministicRouter:
         self._emit(decision, context)
         return decision
 
+    def route_suggested(
+        self,
+        capability: Capability,
+        *,
+        source: RoutingDecision,
+        context: AgentContext,
+        profile: InitiativeProfile,
+        initiative_revision: int,
+    ) -> RoutingDecision:
+        """Enforce a model-suggested capability exactly as an explicit one would be.
+
+        ``source`` must be the classifier-eligible UNRESOLVED decision for this same trusted
+        context. The result is marked ``MODEL_SUGGESTED`` so it is never mistaken for a user
+        selection. Authorization and initiative configuration are checked; no alternatives are
+        tried and nothing is emitted or executed here.
+        """
+        if not isinstance(capability, Capability):
+            raise TypeError("capability must be a Capability")
+        if not self.decision_matches(source, context, profile, initiative_revision):
+            raise ValueError("source decision is not a classifier candidate for this context")
+        rule = RoutingRule.MODEL_SUGGESTED
+
+        def make(outcome: RoutingOutcome, reason: RoutingReason, cap=None) -> RoutingDecision:
+            return RoutingDecision(
+                outcome=outcome,
+                rule=rule,
+                reason=reason,
+                initiative_id=source.initiative_id,
+                initiative_revision=initiative_revision,
+                request_id=source.request_id,
+                correlation_id=source.correlation_id,
+                trace_id=source.trace_id,
+                task_id=source.task_id,
+                capability=cap,
+            )
+
+        if self._authorization_failure(capability, context, profile, initiative_revision):
+            return make(RoutingOutcome.DENIED, RoutingReason.CAPABILITY_NOT_AUTHORIZED)
+        failure = self._capability_failure(capability, profile)
+        if failure is not None:
+            return make(*failure)
+        return make(RoutingOutcome.ROUTED, RoutingReason.MODEL_SUGGESTION_ACCEPTED, capability)
+
+    @staticmethod
+    def decision_matches(
+        decision: RoutingDecision,
+        context: AgentContext,
+        profile: InitiativeProfile,
+        initiative_revision: int,
+    ) -> bool:
+        """True only for a classifier-eligible decision belonging to this exact context."""
+        return (
+            isinstance(decision, RoutingDecision)
+            and decision.outcome is RoutingOutcome.UNRESOLVED
+            and decision.classifier_candidate
+            and decision.initiative_id == context.authorization.initiative_id
+            and profile.initiative.id == decision.initiative_id
+            and decision.initiative_revision == initiative_revision
+            and decision.request_id == context.request_id
+            and decision.correlation_id == context.correlation_id
+            and decision.trace_id == context.trace_id
+            and decision.task_id == context.task_id
+        )
+
     def _decide(
         self,
         request: RoutingRequest,

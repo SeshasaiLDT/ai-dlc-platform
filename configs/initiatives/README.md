@@ -64,4 +64,4 @@ Its intended use and synthetic identifiers are documented in the
 
 ## Routing (optional)
 
-`routing.capabilities` and `routing.workflows` configure deterministic capability routing (see `docs/architecture/deterministic-routing.md`). Both default to empty, so existing profiles remain valid.
+`routing.capabilities`, `routing.workflows` and `routing.classifier` configure deterministic capability routing (see `docs/architecture/deterministic-routing.md`). Both default to empty, so existing profiles remain valid.
