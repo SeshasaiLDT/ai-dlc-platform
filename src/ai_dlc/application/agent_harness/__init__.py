@@ -1,5 +1,6 @@
 """Public shared Agent Harness contracts and lifecycle utilities."""
 
+from .a2a import A2AClient, A2AServerAdapter, ConfiguredAgentDirectory, build_a2a_handler
 from .context import create_agent_context
 from .lifecycle import LifecycleRunner
 from .mcp import McpClient, RetryPolicy, ToolDiscoveryError
@@ -25,10 +26,13 @@ from .ports import (
 )
 
 __all__ = [
+    "A2AClient",
+    "A2AServerAdapter",
     "INTERFACE_VERSION",
     "AgentContext",
     "AgentDelegator",
     "AgentLifecycle",
+    "ConfiguredAgentDirectory",
     "ApprovalIntent",
     "ApprovalProvider",
     "ApprovalReference",
@@ -45,5 +49,6 @@ __all__ = [
     "ToolDiscoveryError",
     "ValidationResult",
     "Validator",
+    "build_a2a_handler",
     "create_agent_context",
 ]
