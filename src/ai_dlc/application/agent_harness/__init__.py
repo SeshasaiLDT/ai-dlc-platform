@@ -21,7 +21,7 @@ from .context_budget import (
     TokenCounter,
 )
 from .lifecycle import LifecycleRunner
-from .mcp import McpClient, RetryPolicy, ToolDiscoveryError
+from .mcp import McpClient, ToolDiscoveryError
 from .models import (
     INTERFACE_VERSION,
     AgentContext,
@@ -42,9 +42,46 @@ from .ports import (
     ToolProvider,
     Validator,
 )
+from .resilience import (
+    AttemptInfo,
+    ErrorClass,
+    ErrorClassifier,
+    IdempotencyStore,
+    InMemoryIdempotencyStore,
+    OperationCategory,
+    OperationIdentity,
+    OperationRecord,
+    OperationSpec,
+    OperationState,
+    ReconciliationOutcome,
+    ReplaySafety,
+    ResilientExecutor,
+    ResumeAction,
+    RetryPolicy,
+    backoff_delay,
+    derive_operation_identity,
+    resume_action,
+)
 from .structured_output import ArtifactReference, StructuredOutputValidator
 
 __all__ = [
+    "AttemptInfo",
+    "ErrorClass",
+    "ErrorClassifier",
+    "IdempotencyStore",
+    "InMemoryIdempotencyStore",
+    "OperationCategory",
+    "OperationIdentity",
+    "OperationRecord",
+    "OperationSpec",
+    "OperationState",
+    "ReconciliationOutcome",
+    "ReplaySafety",
+    "ResilientExecutor",
+    "ResumeAction",
+    "backoff_delay",
+    "derive_operation_identity",
+    "resume_action",
     "AssembledContext",
     "AssembledSegment",
     "BudgetFailure",
