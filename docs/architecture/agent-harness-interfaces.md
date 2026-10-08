@@ -161,3 +161,7 @@ prompt = result.render()
 **Telemetry.** Existing `TelemetryProvider` events `resilience.<category>.{retry.<class>,retry_exhausted,permanent_failure.<class>,ambiguous_outcome,deduplicated,reconciliation_required}` and metrics `resilience.<category>.{attempts,backoff_seconds}`. No payloads, prompts, details, or keys are emitted; telemetry errors are swallowed.
 
 **Limitations.** A cancelled or timed-out attempt cannot prove remote work stopped. Cancellation before dispatch of a write is also recorded as unknown (conservative). Retry-after handling and attempt limits do not replace provider-side rate limiting. Idempotent-write retries are only as safe as the adapter's attestation that the remote enforces the key. Version 1.4.0 adds these types additively and changes no A2A or Gateway contract.
+
+## Packaging (AIDLC-45)
+
+The harness is also distributed as the standalone `ai-dlc-agent-harness` SDK; see [agent-harness-sdk.md](agent-harness-sdk.md). Packaging moved `ResolvedAuthorizationContext` and related grants to `ai_dlc.domain.authorization` and `ApprovalStatus` to `ai_dlc.domain.approval` (old import paths re-export the same objects), and made the A2A names lazy. `INTERFACE_VERSION` stays 1.4.0.

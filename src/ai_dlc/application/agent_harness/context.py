@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from pydantic import JsonValue
 
-from ai_dlc.application.authorization import ResolvedAuthorizationContext
+from ai_dlc.domain.authorization import ResolvedAuthorizationContext
 
 from .models import AgentContext
 

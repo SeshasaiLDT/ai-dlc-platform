@@ -1,6 +1,11 @@
-"""Public shared Agent Harness contracts and lifecycle utilities."""
+"""Public shared Agent Harness contracts and lifecycle utilities.
 
-from .a2a import A2AClient, A2AServerAdapter, ConfiguredAgentDirectory, build_a2a_handler
+A2A names are loaded lazily so the core SDK imports without the optional ``a2a`` extra.
+"""
+
+from importlib import import_module
+from typing import Any
+
 from .context import create_agent_context
 from .context_budget import (
     AssembledContext,
@@ -126,3 +131,20 @@ __all__ = [
     "build_a2a_handler",
     "create_agent_context",
 ]
+
+_A2A_NAMES = frozenset(
+    {"A2AClient", "A2AServerAdapter", "ConfiguredAgentDirectory", "build_a2a_handler"}
+)
+
+
+def __getattr__(name: str) -> Any:
+    if name in _A2A_NAMES:
+        try:
+            module = import_module(".a2a", __name__)
+        except ModuleNotFoundError as error:
+            raise ImportError(
+                f"{name} requires the optional A2A dependencies: "
+                "pip install 'ai-dlc-agent-harness[a2a]'"
+            ) from error
+        return getattr(module, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
