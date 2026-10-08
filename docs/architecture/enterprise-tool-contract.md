@@ -235,7 +235,8 @@ This document defines the common boundary. AIDLC-32 implements the
 AIDLC-33 implements the [governed ServiceNow contract](servicenow-mcp-integration.md);
 AIDLC-34 implements [remote Git provider operations](git-provider-integration.md);
 AIDLC-35 implements [isolated local workspace tools](local-workspace-toolset.md);
-AIDLC-36 can wire the governed runtime/MCP gateway. AIDLC-100 supplies the
+AIDLC-36 defines the [AgentCore Gateway catalog and CloudFormation configuration](agentcore-gateway.md).
+AIDLC-100 supplies the
 Resource Binding Registry contract and in-memory resolver; durable storage and
 managed connection lookup remain deployment work. Future integration stories
 should test schema rejection, scope immutability, normalization, and redaction.
