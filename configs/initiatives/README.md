@@ -61,3 +61,7 @@ The [Atlas Travel sample](samples/atlas-travel.yaml) is a stable synthetic
 integration/demo fixture, distinct from the `examples/` schema demonstrations.
 Its intended use and synthetic identifiers are documented in the
 [sample initiative guide](../../docs/architecture/sample-initiative.md).
+
+## Routing (optional)
+
+`routing.capabilities` and `routing.workflows` configure deterministic capability routing (see `docs/architecture/deterministic-routing.md`). Both default to empty, so existing profiles remain valid.

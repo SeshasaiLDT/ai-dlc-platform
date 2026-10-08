@@ -12,6 +12,8 @@ from pydantic import (
     model_validator,
 )
 
+from ai_dlc.domain.identity import Capability
+
 from .enums import GitProvider, KnowledgeSourceType, ModelRole, RepositoryAccess
 
 CURRENT_SCHEMA_VERSION = "1.0"
@@ -200,6 +202,43 @@ class Defaults(ProfileModel):
     model_roles: ModelRoleDefaults = Field(default_factory=ModelRoleDefaults)
 
 
+class CapabilityRoute(ProfileModel):
+    """Availability of one platform capability for this initiative (not a permission)."""
+
+    capability: Capability
+    enabled: bool = True
+
+
+class WorkflowRoute(ProfileModel):
+    """Administrator-configured mapping from a known workflow ID to one capability."""
+
+    id: Identifier
+    capability: Capability
+    enabled: bool = True
+    # When true, an explicit selection of a different capability is rejected, not overridden.
+    capability_locked: bool = True
+
+
+class Routing(ProfileModel):
+    """Inputs to deterministic capability routing; absent means nothing is routable."""
+
+    capabilities: tuple[CapabilityRoute, ...] = ()
+    workflows: tuple[WorkflowRoute, ...] = ()
+
+    @field_validator("capabilities")
+    @classmethod
+    def unique_capabilities(cls, value: tuple[CapabilityRoute, ...]) -> tuple[CapabilityRoute, ...]:
+        names = [item.capability for item in value]
+        if len(names) != len(set(names)):
+            raise ValueError("duplicate capability route")
+        return value
+
+    @field_validator("workflows")
+    @classmethod
+    def unique_workflows(cls, value: tuple[WorkflowRoute, ...]) -> tuple[WorkflowRoute, ...]:
+        return _unique_ids(value, "workflow")
+
+
 class InitiativeProfile(ProfileModel):
     schema_version: Literal["1.0"]
     initiative: InitiativeIdentity
@@ -211,6 +250,7 @@ class InitiativeProfile(ProfileModel):
     build_profiles: tuple[BuildProfile, ...] = ()
     policies: Policies = Field(default_factory=Policies)
     defaults: Defaults = Field(default_factory=Defaults)
+    routing: Routing = Field(default_factory=Routing)
 
     @field_validator("schema_version", mode="before")
     @classmethod
