@@ -125,3 +125,7 @@ defines durable approval state, authorized human decisions, and the execution ga
 [Authorization regression tests](docs/testing/authorization-regression.md)
 exercise cross-initiative isolation, tool delegation, approval replay, and audit
 failure behavior in the full CI test suite.
+
+[Integration contract tests](docs/testing/integration-contract-tests.md)
+exercise the shared enterprise trust/error contract, Gateway correlation and IaC,
+and local-workspace commit handoffs without production or network dependencies.
