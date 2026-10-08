@@ -349,15 +349,21 @@ class ModelSelectionRequest(ContractModel):
             if not allowed_regions:
                 raise ValueError("requested regions are outside the role's allowed regions")
         denied_providers = gov.denied_providers | self.denied_providers
-        governance = gov.model_copy(
-            update={
-                "allowed_providers": allowed_providers - denied_providers,
-                "denied_providers": denied_providers,
-                "allowed_regions": allowed_regions,
-            }
-        )
-        if (self.allowed_providers or gov.allowed_providers) and not governance.allowed_providers:
+        eligible_providers = allowed_providers - denied_providers
+        if allowed_providers and not eligible_providers:
             raise ValueError("no provider remains eligible after restrictions")
+        eligible_regions = allowed_regions - gov.denied_regions
+        if allowed_regions and not eligible_regions:
+            raise ValueError("no region remains eligible after restrictions")
+        # Rebuilt through the validated constructor so every invariant is re-checked.
+        governance = DataGovernance(
+            allowed_classifications=gov.allowed_classifications,
+            allowed_deployment_types=gov.allowed_deployment_types,
+            allowed_providers=eligible_providers,
+            denied_providers=denied_providers,
+            allowed_regions=eligible_regions,
+            denied_regions=gov.denied_regions,
+        )
 
         context = profile.context
         context = ContextRequirements(
@@ -405,14 +411,14 @@ class ModelSelectionRequest(ContractModel):
                 | wanted.response_capabilities,
             )
 
-        return profile.model_copy(
-            update={
-                "capabilities": capabilities,
-                "context": context,
-                "latency": latency,
-                "cost": cost,
-                "governance": governance,
-            }
+        return ModelRequirements(
+            role=profile.role,
+            capabilities=capabilities,
+            context=context,
+            latency=latency,
+            cost=cost,
+            governance=governance,
+            require_separate_from_generator=profile.require_separate_from_generator,
         )
 
 

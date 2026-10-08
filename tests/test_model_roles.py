@@ -371,3 +371,70 @@ def test_public_exports_and_version() -> None:
     ):
         assert name in harness.__all__
         assert getattr(harness, name) is getattr(module, name)
+
+
+def _governed(**kwargs):
+    return profile().model_copy(
+        update={
+            "governance": DataGovernance(
+                allowed_classifications=frozenset({DataClassification.INTERNAL}), **kwargs
+            )
+        }
+    )
+
+
+def test_provider_allow_deny_conflict_fails_closed() -> None:
+    base = _governed(allowed_providers=frozenset({"p1", "p2"}))
+    with pytest.raises(ValueError, match="eligible"):
+        request(
+            allowed_providers=frozenset({"p1"}), denied_providers=frozenset({"p1"})
+        ).effective_requirements(base)
+    open_base = _governed()
+    with pytest.raises(ValueError, match="eligible"):
+        request(
+            allowed_providers=frozenset({"p1"}), denied_providers=frozenset({"p1"})
+        ).effective_requirements(open_base)
+
+
+def test_region_allow_deny_conflict_fails_closed() -> None:
+    base = _governed(denied_regions=frozenset({"r-bad"}))
+    with pytest.raises(ValueError, match="eligible"):
+        request(allowed_regions=frozenset({"r-bad"})).effective_requirements(base)
+    eff = request(allowed_regions=frozenset({"r-bad", "r-ok"})).effective_requirements(base)
+    assert eff.governance.allowed_regions == {"r-ok"}
+    assert not eff.governance.allowed_regions & eff.governance.denied_regions
+
+
+def test_no_eligible_provider_left() -> None:
+    base = _governed(allowed_providers=frozenset({"p1"}))
+    with pytest.raises(ValueError):
+        request(denied_providers=frozenset({"p1"})).effective_requirements(base)
+    with pytest.raises(ValueError):
+        request(allowed_providers=frozenset({"p2"})).effective_requirements(base)
+
+
+def test_no_eligible_region_left() -> None:
+    base = _governed(allowed_regions=frozenset({"r1"}))
+    with pytest.raises(ValueError):
+        request(allowed_regions=frozenset({"r2"})).effective_requirements(base)
+
+
+def test_existing_governance_restrictions_remain_intact() -> None:
+    base = _governed(
+        allowed_providers=frozenset({"p1", "p2"}),
+        denied_providers=frozenset({"p9"}),
+        allowed_regions=frozenset({"r1", "r2"}),
+        denied_regions=frozenset({"r9"}),
+        allowed_deployment_types=frozenset({module.DeploymentType.PRIVATE_ENDPOINT}),
+    )
+    eff = request(denied_providers=frozenset({"p2"})).effective_requirements(base)
+    gov = eff.governance
+    assert gov.allowed_classifications == {DataClassification.INTERNAL}
+    assert gov.allowed_deployment_types == {module.DeploymentType.PRIVATE_ENDPOINT}
+    assert gov.allowed_providers == {"p1"}
+    assert gov.denied_providers == {"p2", "p9"}
+    assert gov.allowed_regions == {"r1", "r2"}
+    assert gov.denied_regions == {"r9"}
+    assert isinstance(eff, module.ModelRequirements)
+    # the result round-trips through validation
+    assert module.ModelRequirements.model_validate(eff.model_dump()) == eff
