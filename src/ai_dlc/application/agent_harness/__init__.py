@@ -1,5 +1,7 @@
-"""Public shared Agent Harness contracts (version 1.0.0)."""
+"""Public shared Agent Harness contracts and lifecycle utilities."""
 
+from .context import create_agent_context
+from .lifecycle import LifecycleRunner
 from .models import (
     INTERFACE_VERSION,
     AgentContext,
@@ -33,9 +35,11 @@ __all__ = [
     "ExecutionResult",
     "ExecutionStatus",
     "Invocation",
+    "LifecycleRunner",
     "ModelProvider",
     "TelemetryProvider",
     "ToolProvider",
     "ValidationResult",
     "Validator",
+    "create_agent_context",
 ]
