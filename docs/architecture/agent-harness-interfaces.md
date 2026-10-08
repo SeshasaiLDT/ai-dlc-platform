@@ -1,6 +1,6 @@
 # Shared Agent Harness interfaces
 
-The public Python interface version is **1.4.0** (`INTERFACE_VERSION`); the initial interface version was 1.0.0. It currently ships inside the `ai-dlc-platform` distribution, whose version remains 0.1.0. The harness is a library imported by independently deployed agents. It does not run a central execution service or define an A2A wire schema.
+The public Python interface version is **1.5.0** (`INTERFACE_VERSION`); the initial interface version was 1.0.0. It currently ships inside the `ai-dlc-platform` distribution, whose version remains 0.1.0. The harness is a library imported by independently deployed agents. It does not run a central execution service or define an A2A wire schema.
 
 `AgentLifecycle` owns initialize, execute, and shutdown. `AgentContext` is immutable, trusted in-process state: request, correlation, session, and trace IDs; the existing `ResolvedAuthorizationContext`; an optional aware deadline; cancellation state; and optional JSON metadata. Its `principal` property comes only from the resolved authorization snapshot. The authenticated runtime creates this context after authorization. Agent input must never supply or replace the principal, authorization snapshot, scopes, approval decisions, or trusted gateway references.
 
@@ -164,4 +164,8 @@ prompt = result.render()
 
 ## Packaging (AIDLC-45)
 
-The harness is also distributed as the standalone `ai-dlc-agent-harness` SDK; see [agent-harness-sdk.md](agent-harness-sdk.md). Packaging moved `ResolvedAuthorizationContext` and related grants to `ai_dlc.domain.authorization` and `ApprovalStatus` to `ai_dlc.domain.approval` (old import paths re-export the same objects), and made the A2A names lazy. `INTERFACE_VERSION` stays 1.4.0.
+The harness is also distributed as the standalone `ai-dlc-agent-harness` SDK; see [agent-harness-sdk.md](agent-harness-sdk.md). Packaging moved `ResolvedAuthorizationContext` and related grants to `ai_dlc.domain.authorization` and `ApprovalStatus` to `ai_dlc.domain.approval` (old import paths re-export the same objects), and made the A2A names lazy. `INTERFACE_VERSION` was 1.4.0 at packaging time.
+
+## Model roles (AIDLC-46)
+
+Interface 1.5.0 adds vendor-neutral model roles and requirement contracts (`ModelRole`, `ModelRequirements`, `RoleProfiles`, `ModelSelectionRequest`, and related types) additively; `ModelProvider`, A2A and Gateway contracts are unchanged. See [model-roles.md](model-roles.md).

@@ -27,6 +27,25 @@ from .context_budget import (
 )
 from .lifecycle import LifecycleRunner
 from .mcp import McpClient, ToolDiscoveryError
+from .model_roles import (
+    CapabilityRequirements,
+    ContextRequirements,
+    CostRequirements,
+    CostSensitivity,
+    DataClassification,
+    DataGovernance,
+    DeploymentType,
+    InputModality,
+    LatencyPreference,
+    LatencyRequirements,
+    ModelRequirements,
+    ModelRole,
+    ModelSelectionRequest,
+    ReasoningLevel,
+    ResponseCapability,
+    RoleProfiles,
+    default_role_requirements,
+)
 from .models import (
     INTERFACE_VERSION,
     AgentContext,
@@ -70,6 +89,23 @@ from .resilience import (
 from .structured_output import ArtifactReference, StructuredOutputValidator
 
 __all__ = [
+    "CapabilityRequirements",
+    "ContextRequirements",
+    "CostRequirements",
+    "CostSensitivity",
+    "DataClassification",
+    "DataGovernance",
+    "DeploymentType",
+    "InputModality",
+    "LatencyPreference",
+    "LatencyRequirements",
+    "ModelRequirements",
+    "ModelRole",
+    "ModelSelectionRequest",
+    "ReasoningLevel",
+    "ResponseCapability",
+    "RoleProfiles",
+    "default_role_requirements",
     "AttemptInfo",
     "ErrorClass",
     "ErrorClassifier",

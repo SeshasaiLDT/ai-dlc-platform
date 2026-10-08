@@ -29,13 +29,14 @@ No AWS, YAML, or model-provider packages are required. `A2AClient`, `A2AServerAd
 Four versions move independently:
 
 - **SDK distribution** (`ai-dlc-agent-harness`, currently `0.1.0`): semantic version of the Python distribution. Pre-1.0 until the packaging and registry flow have been exercised by a real consumer.
-- **Harness interface** (`INTERFACE_VERSION`, currently `1.4.0`): the public contract policy in [agent-harness-interfaces.md](agent-harness-interfaces.md).
+- **Harness interface** (`INTERFACE_VERSION`, currently `1.5.0`): the public contract policy in [agent-harness-interfaces.md](agent-harness-interfaces.md).
 - **A2A wire protocol** (1.0) and `a2a-sdk` version: unchanged.
 - **Agent capability version**: each agent's own Agent Card.
 
 | SDK | Interface | Notes |
 | --- | --- | --- |
 | 0.1.0 | 1.4.0 | First package; no behavior change |
+| 0.1.0 | 1.5.0 | Adds model role contracts (additive; SDK not re-versioned) |
 
 A new SDK release that only changes packaging or fixes bugs does not bump the interface. Agents should check the interface at startup:
 
