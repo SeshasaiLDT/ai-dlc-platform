@@ -160,7 +160,7 @@ def test_io_ports_are_async_and_local_ports_are_sync() -> None:
 
 
 def test_version_and_agent_agnostic_imports() -> None:
-    assert INTERFACE_VERSION == "1.2.0"
+    assert INTERFACE_VERSION == "1.3.0"
     package = Path(__file__).parents[1] / "src/ai_dlc/application/agent_harness"
     source = "\n".join(path.read_text() for path in package.glob("*.py"))
     for forbidden in (

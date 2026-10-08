@@ -16,7 +16,7 @@ from ai_dlc.application.approval import ApprovalStatus
 from ai_dlc.application.authorization import ResolvedAuthorizationContext
 from ai_dlc.domain.identity import Principal
 
-INTERFACE_VERSION = "1.2.0"
+INTERFACE_VERSION = "1.3.0"
 _JSON_OBJECT = TypeAdapter(dict[str, JsonValue])
 
 type FrozenJsonValue = (
