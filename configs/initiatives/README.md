@@ -69,3 +69,7 @@ Its intended use and synthetic identifiers are documented in the
 ## Reasoning policy (optional)
 
 `reasoning` sets the per-initiative standard-vs-deep tier policy (see `docs/architecture/reasoning-escalation.md`). Every field has a safe default, so existing profiles remain valid.
+
+## Independent review (optional)
+
+`review` sets independent AI-review requirements (see `docs/architecture/independent-review.md`). All fields have safe defaults, so existing profiles remain valid.

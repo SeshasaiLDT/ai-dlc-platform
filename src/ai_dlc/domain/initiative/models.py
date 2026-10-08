@@ -286,6 +286,24 @@ class ReasoningPolicy(ProfileModel):
         return value
 
 
+class ReviewPolicy(ProfileModel):
+    """Independent AI-review requirements for an initiative (all optional, safe defaults).
+
+    A request may tighten these, never relax them. Independence is judged on explicit trusted
+    registry metadata, never on parsing model names.
+    """
+
+    enabled: bool = True
+    require_different_deployment: bool = True
+    require_different_model: bool = False
+    require_different_family: bool = False
+    require_different_provider: bool = False
+    allow_unknown_provenance: bool = False
+    require_immutable_artifact: bool = True
+    require_review_evidence: bool = True
+    maximum_review_attempts: Annotated[int, Field(ge=1, le=10)] = 3
+
+
 class InitiativeProfile(ProfileModel):
     schema_version: Literal["1.0"]
     initiative: InitiativeIdentity
@@ -299,6 +317,7 @@ class InitiativeProfile(ProfileModel):
     defaults: Defaults = Field(default_factory=Defaults)
     routing: Routing = Field(default_factory=Routing)
     reasoning: ReasoningPolicy = Field(default_factory=ReasoningPolicy)
+    review: ReviewPolicy = Field(default_factory=ReviewPolicy)
 
     @field_validator("schema_version", mode="before")
     @classmethod

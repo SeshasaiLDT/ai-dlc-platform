@@ -150,6 +150,8 @@ class ModelDeploymentSpec(ContractModel):
     provider_id: str
     model_identifier: str
     inference_profile_id: str | None = None
+    # Explicit trusted family metadata (never parsed from names); None means unknown.
+    model_family: str | None = None
     region: str
     deployment_type: DeploymentType
     capabilities: DeploymentCapabilities
@@ -176,6 +178,13 @@ class ModelDeploymentSpec(ContractModel):
     @classmethod
     def model_format(cls, value: str) -> str:
         return _model_identifier(value, "model_identifier") or value
+
+    @field_validator("model_family")
+    @classmethod
+    def family_format(cls, value: str | None) -> str | None:
+        if value is not None and not _PROVIDER.match(value):
+            raise ValueError("model_family must be a lowercase kebab-case identifier")
+        return value
 
     @field_validator("inference_profile_id")
     @classmethod
