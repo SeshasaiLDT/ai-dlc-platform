@@ -2,6 +2,7 @@
 
 from .context import create_agent_context
 from .lifecycle import LifecycleRunner
+from .mcp import McpClient, RetryPolicy, ToolDiscoveryError
 from .models import (
     INTERFACE_VERSION,
     AgentContext,
@@ -36,9 +37,12 @@ __all__ = [
     "ExecutionStatus",
     "Invocation",
     "LifecycleRunner",
+    "McpClient",
     "ModelProvider",
+    "RetryPolicy",
     "TelemetryProvider",
     "ToolProvider",
+    "ToolDiscoveryError",
     "ValidationResult",
     "Validator",
     "create_agent_context",
