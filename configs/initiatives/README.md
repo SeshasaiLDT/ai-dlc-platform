@@ -73,3 +73,7 @@ Its intended use and synthetic identifiers are documented in the
 ## Independent review (optional)
 
 `review` sets independent AI-review requirements (see `docs/architecture/independent-review.md`). All fields have safe defaults, so existing profiles remain valid.
+
+## Inference controls (optional)
+
+`inference_controls` configures model budgets, quotas and fallback (see `docs/architecture/model-cost-quota-fallback.md`). Everything is optional with safe defaults (no limits, fallback off).

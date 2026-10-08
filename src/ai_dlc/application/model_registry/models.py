@@ -107,8 +107,16 @@ class PricingMetadata(ContractModel):
     output_cost_per_million_tokens: Decimal | None = None
     currency: str = "USD"
     effective_date: date | None = None
+    # Only set when the provider prices cache tokens separately; None = not priced.
+    cache_read_cost_per_million_tokens: Decimal | None = None
+    cache_write_cost_per_million_tokens: Decimal | None = None
 
-    @field_validator("input_cost_per_million_tokens", "output_cost_per_million_tokens")
+    @field_validator(
+        "input_cost_per_million_tokens",
+        "output_cost_per_million_tokens",
+        "cache_read_cost_per_million_tokens",
+        "cache_write_cost_per_million_tokens",
+    )
     @classmethod
     def non_negative(cls, value: Decimal | None) -> Decimal | None:
         if value is not None and (not value.is_finite() or value < 0):

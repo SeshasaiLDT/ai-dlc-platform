@@ -1,6 +1,7 @@
 """Version 1.0 of the initiative-owned, secret-free configuration contract."""
 
 import re
+from decimal import Decimal
 from typing import Annotated, Literal, Protocol, Self
 
 from pydantic import (
@@ -14,7 +15,16 @@ from pydantic import (
 
 from ai_dlc.domain.identity import Capability
 
-from .enums import GitProvider, KnowledgeSourceType, ModelRole, RepositoryAccess
+from .enums import (
+    BudgetAction,
+    BudgetPeriod,
+    FallbackFailure,
+    FallbackOrdering,
+    GitProvider,
+    KnowledgeSourceType,
+    ModelRole,
+    RepositoryAccess,
+)
 
 CURRENT_SCHEMA_VERSION = "1.0"
 
@@ -304,6 +314,108 @@ class ReviewPolicy(ProfileModel):
     maximum_review_attempts: Annotated[int, Field(ge=1, le=10)] = 3
 
 
+Money = Annotated[Decimal, Field(ge=0, allow_inf_nan=False, max_digits=18, decimal_places=6)]
+
+
+class RoleAmount(ProfileModel):
+    role: ModelRole
+    amount: Money
+
+
+class BudgetPolicy(ProfileModel):
+    """Spending limits for model calls. No limit configured means that scope is not enforced.
+
+    Budgets never grant authorization. A request may lower its own limit, never raise it.
+    """
+
+    currency: Annotated[str, StringConstraints(pattern=r"^[A-Z]{3}$")] = "USD"
+    period: BudgetPeriod = BudgetPeriod.MONTHLY
+    initiative_limit: Money | None = None
+    role_limits: tuple[RoleAmount, ...] = ()
+    request_limit: Money | None = None
+    warning_threshold: Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)] = 0.8
+    on_exhausted: BudgetAction = BudgetAction.BLOCK
+    revision: Annotated[int, Field(ge=1)] = 1
+
+    @field_validator("role_limits")
+    @classmethod
+    def unique_roles(cls, value: tuple[RoleAmount, ...]) -> tuple[RoleAmount, ...]:
+        if len({item.role for item in value}) != len(value):
+            raise ValueError("duplicate role budget")
+        return value
+
+
+class QuotaLimits(ProfileModel):
+    max_invocations: Annotated[int, Field(ge=0)] | None = None
+    max_tokens: Annotated[int, Field(ge=0)] | None = None
+    max_concurrent: Annotated[int, Field(ge=0)] | None = None
+    max_requests_per_minute: Annotated[int, Field(ge=0)] | None = None
+
+
+class RoleQuota(ProfileModel):
+    role: ModelRole
+    limits: QuotaLimits
+
+
+class QuotaPolicy(ProfileModel):
+    period: BudgetPeriod = BudgetPeriod.DAILY
+    initiative: QuotaLimits = Field(default_factory=QuotaLimits)
+    role_limits: tuple[RoleQuota, ...] = ()
+
+    @field_validator("role_limits")
+    @classmethod
+    def unique_roles(cls, value: tuple[RoleQuota, ...]) -> tuple[RoleQuota, ...]:
+        if len({item.role for item in value}) != len(value):
+            raise ValueError("duplicate role quota")
+        return value
+
+
+class DeploymentPriority(ProfileModel):
+    deployment_id: Identifier
+    priority: Annotated[int, Field(ge=0, le=1000)]
+
+
+class FallbackPolicy(ProfileModel):
+    """Opt-in fallback among deployments that satisfy the *same* requirements."""
+
+    enabled: bool = False
+    max_fallback_attempts: Annotated[int, Field(ge=0, le=3)] = 2
+    failure_categories: tuple[FallbackFailure, ...] = (
+        FallbackFailure.TRANSIENT,
+        FallbackFailure.THROTTLED,
+        FallbackFailure.PROVIDER_UNAVAILABLE,
+    )
+    ordering: tuple[FallbackOrdering, ...] = (
+        FallbackOrdering.PRIORITY,
+        FallbackOrdering.COST,
+        FallbackOrdering.LATENCY,
+    )
+    priorities: tuple[DeploymentPriority, ...] = ()
+
+    @field_validator("failure_categories", "ordering")
+    @classmethod
+    def unique(cls, value: tuple) -> tuple:
+        if len(set(value)) != len(value):
+            raise ValueError("duplicate entries")
+        return value
+
+    @field_validator("priorities")
+    @classmethod
+    def unique_priorities(
+        cls, value: tuple[DeploymentPriority, ...]
+    ) -> tuple[DeploymentPriority, ...]:
+        ids = [item.deployment_id for item in value]
+        if len(set(ids)) != len(ids):
+            raise ValueError("duplicate deployment priority")
+        return value
+
+
+class ModelGovernancePolicy(ProfileModel):
+    budget: BudgetPolicy = Field(default_factory=BudgetPolicy)
+    quota: QuotaPolicy = Field(default_factory=QuotaPolicy)
+    fallback: FallbackPolicy = Field(default_factory=FallbackPolicy)
+
+
 class InitiativeProfile(ProfileModel):
     schema_version: Literal["1.0"]
     initiative: InitiativeIdentity
@@ -318,6 +430,7 @@ class InitiativeProfile(ProfileModel):
     routing: Routing = Field(default_factory=Routing)
     reasoning: ReasoningPolicy = Field(default_factory=ReasoningPolicy)
     review: ReviewPolicy = Field(default_factory=ReviewPolicy)
+    inference_controls: ModelGovernancePolicy = Field(default_factory=ModelGovernancePolicy)
 
     @field_validator("schema_version", mode="before")
     @classmethod
