@@ -24,6 +24,7 @@ from .ports import (
     ToolProvider,
     Validator,
 )
+from .structured_output import ArtifactReference, StructuredOutputValidator
 
 __all__ = [
     "A2AClient",
@@ -32,6 +33,7 @@ __all__ = [
     "AgentContext",
     "AgentDelegator",
     "AgentLifecycle",
+    "ArtifactReference",
     "ConfiguredAgentDirectory",
     "ApprovalIntent",
     "ApprovalProvider",
@@ -44,6 +46,7 @@ __all__ = [
     "McpClient",
     "ModelProvider",
     "RetryPolicy",
+    "StructuredOutputValidator",
     "TelemetryProvider",
     "ToolProvider",
     "ToolDiscoveryError",

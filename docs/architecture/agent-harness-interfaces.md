@@ -1,10 +1,10 @@
 # Shared Agent Harness interfaces
 
-The public Python interface version is **1.1.0** (`INTERFACE_VERSION`); the initial interface version was 1.0.0. It currently ships inside the `ai-dlc-platform` distribution, whose version remains 0.1.0. The harness is a library imported by independently deployed agents. It does not run a central execution service or define an A2A wire schema.
+The public Python interface version is **1.2.0** (`INTERFACE_VERSION`); the initial interface version was 1.0.0. It currently ships inside the `ai-dlc-platform` distribution, whose version remains 0.1.0. The harness is a library imported by independently deployed agents. It does not run a central execution service or define an A2A wire schema.
 
 `AgentLifecycle` owns initialize, execute, and shutdown. `AgentContext` is immutable, trusted in-process state: request, correlation, session, and trace IDs; the existing `ResolvedAuthorizationContext`; an optional aware deadline; cancellation state; and optional JSON metadata. Its `principal` property comes only from the resolved authorization snapshot. The authenticated runtime creates this context after authorization. Agent input must never supply or replace the principal, authorization snapshot, scopes, approval decisions, or trusted gateway references.
 
-`Invocation` and `ExecutionResult` are JSON-safe application boundary values. `ExecutionStatus` is `succeeded`, `failed`, `cancelled`, or `timed_out`. Every unsuccessful result has an `ExecutionError` (`code`, `message`, `retryable`, optional JSON `details`), and every result carries correlation and trace IDs. Metadata is optional. Adapters must propagate those IDs without accepting an agent-generated identity. A deadline is an absolute, timezone-aware instant; a cancelled context or expired deadline must prevent new external calls. Implementations should return `cancelled` or `timed_out` when they can report the outcome, and must propagate task cancellation when their caller cancels them. This library does not schedule or enforce deadlines.
+`Invocation` and `ExecutionResult` are JSON-safe application boundary values. `ExecutionStatus` is `succeeded`, `failed`, `cancelled`, or `timed_out`. Every unsuccessful result has an `ExecutionError` (`code`, `message`, `retryable`, optional JSON `details`), and every result carries correlation and trace IDs. Metadata is optional. Adapters must propagate those IDs without accepting an agent-generated identity. A deadline is an absolute, timezone-aware instant; a cancelled context or expired deadline must prevent new external calls. Implementations should return `cancelled` or `timed_out` when they can report the outcome, and must propagate task cancellation when their caller cancels them. The ports define these semantics; lifecycle and adapter components enforce deadlines at their own boundaries.
 
 `ToolProvider` lists and invokes tools; its implementation must apply existing Gateway discovery and governed invocation checks. `ModelProvider` invokes a configured model role. `AgentDelegator` calls an independently deployed agent through an A2A adapter and preserves identity, authorization, correlation, trace, timeout, and cancellation semantics. `Validator` performs local input checks. `ApprovalProvider` requests and reads human approval through a trusted adapter; its `ApprovalIntent` is not a policy decision, and `ApprovalReference` is not permission to execute. The adapter must use the existing `ApprovalService` and recheck the established authorization, tool-policy, approval, and resource boundaries before a protected operation. `TelemetryProvider` records names, numeric metrics, and structured errors using the trusted context; implementations must exclude credentials and sensitive payloads.
 
@@ -35,7 +35,7 @@ class EchoAgent:
         pass
 ```
 
-Agents own prompts, workflow steps, validation rules, and deployment. Future adapters own A2A serialization, model access, Gateway transport, approval access, and telemetry delivery. This package has no AWS, agent-framework, POS, or agent-specific dependency. Existing A2A behavior is unchanged; wire-protocol versions and independently published agent capability versions are separate from this SDK's Python package version.
+Agents own prompts, workflow steps, validation rules, and deployment. Adapters own A2A serialization, model access, Gateway transport, approval access, and telemetry delivery. This package has no AWS, agent-framework, POS, or agent-specific dependency. Wire-protocol versions and independently published agent capability versions are separate from this SDK's Python package version.
 
 ## Compatibility policy
 
@@ -72,3 +72,28 @@ For a new delegation the client sends one official `SendMessageRequest` with JSO
 The client uses the shorter of its transport timeout and `AgentContext.deadline`; cancellation stops the local SDK call and propagates `CancelledError` from an externally cancelled caller. A timeout or cancellation before receiving a task includes the A2A message ID, but cannot assert a remote task ID. A received task ID is preserved in result metadata. Cancelling the local request does not prove remote execution stopped. Transport and protocol exceptions become sanitized `ExecutionError` codes; supported typed SDK errors distinguish invalid requests, unsupported methods, and remote timeouts. Authentication/authorization errors are distinguished when the transport exposes HTTP status 401/403; an SDK transport that erases the status is reported as `remote_unavailable`. Agent exceptions never expose their text.
 
 This adapter supports Agent Cards, single message sends, terminal task responses, structured JSON results, and task ID handoff. A nonterminal submitted, working, input-required, or auth-required task returns `remote_task_pending` with its ID and state for a later polling adapter. It does not implement polling, resume, streaming, push notifications, persistent task storage, distributed cancellation, or AgentCore deployment. The SDK request handler may provide protocol operations beyond this adapter's terminal execution path; do not advertise those capabilities in the Agent Card until an agent implements them. This is a tested A2A 1.0 subset, not a claim of full protocol compliance. `INTERFACE_VERSION` remains the Python harness interface version and is independent of A2A's wire version and the `a2a-sdk` package version.
+
+## Structured output validation (AIDLC-42)
+
+An agent selects one schema for each output contract: a Pydantic `BaseModel` class or a local JSON Schema Draft 2020-12 document. `StructuredOutputValidator.validate(Invocation, context=...)` implements the existing synchronous `Validator` port for already parsed input. Its async `parse(raw_json, context=...)` strictly parses a JSON object, validates it, and returns the existing `ExecutionResult` with `output.data` and `output.artifacts`. The result metadata includes `schema_id`, trusted `task_id`, and repair attempt count; request, correlation, and trace IDs come from `AgentContext`. Pydantic validation uses strict mode; model authors set `extra="forbid"` when unexpected properties must fail. JSON Schema uses the existing `jsonschema` dependency, supports local references, and rejects external references. Missing fields, types, enums, nested objects, extra properties, and malformed JSON map to stable sanitized `ExecutionError` codes without raw values or exception text.
+
+```python
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict
+
+from ai_dlc.application.agent_harness import StructuredOutputValidator
+
+
+class ReviewOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    verdict: Literal["pass", "fail"]
+
+
+validator = StructuredOutputValidator("review.v1", model=ReviewOutput)
+result = await validator.parse(raw_model_json, context=trusted_context)
+```
+
+Optional `ArtifactReference` values carry only logical `store_id`, `artifact_id`, and small JSON metadata. An optional artifact metadata schema validates them before inclusion; malformed references and inline payload fields fail closed. Storage, resolution, and access authorization stay with trusted artifact services. Repair is disabled by default and requires both an explicit maximum of 1–3 attempts and an injected async callback (for example, an adapter around `ModelProvider`). Every candidate is revalidated. Cancellation and the execution deadline stop local repair work, but cancellation cannot prove remote model work stopped. Artifact failures are not sent to repair because changing model text cannot fix references. Telemetry uses the existing `TelemetryProvider`: event names include a stable schema ID, metrics use fixed names, the trusted context carries correlation and trace IDs, and errors contain only category and schema information. Telemetry exceptions do not change the validation outcome. This layer does not choose prompts, authorize artifact access, store artifacts, or migrate agents.
+
+Version 1.2.0 adds `StructuredOutputValidator` and `ArtifactReference` without changing existing harness ports or result fields. It does not alter the A2A protocol version.
