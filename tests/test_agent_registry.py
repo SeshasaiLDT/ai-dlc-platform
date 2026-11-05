@@ -89,4 +89,3 @@ def test_new_agent_is_discovered_without_orchestrator_catalog_changes():
         "first",
         "new-specialist",
     }
-}
