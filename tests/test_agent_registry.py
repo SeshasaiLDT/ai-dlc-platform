@@ -58,12 +58,14 @@ def test_registration_versions_revisions_and_preserves_manifest_version():
 def test_discovery_filters_capabilities_permissions_and_health():
     agents = registry()
     agents.register(manifest())
-    agents.register(manifest(
-        "writer",
-        capabilities=("document.write",),
-        permissions=frozenset({"documents.write"}),
-        health=AgentHealth(status="unhealthy"),
-    ))
+    agents.register(
+        manifest(
+            "writer",
+            capabilities=("document.write",),
+            permissions=frozenset({"documents.write"}),
+            health=AgentHealth(status="unhealthy"),
+        )
+    )
     found = agents.discover(
         required_capabilities=frozenset({"document.review"}),
         allowed_permissions=frozenset({"documents.read"}),
@@ -80,9 +82,11 @@ def test_new_agent_is_discovered_without_orchestrator_catalog_changes():
     agents = registry()
     agents.register(manifest("first"))
     agents.register(manifest("new-specialist", capabilities=("image.inspect",)))
-    assert {record.manifest.agent_id for record in agents.discover(
-        allowed_permissions=frozenset({"documents.read"})
-    )} == {
+    assert {
+        record.manifest.agent_id
+        for record in agents.discover(allowed_permissions=frozenset({"documents.read"}))
+    } == {
         "first",
         "new-specialist",
     }
+}
