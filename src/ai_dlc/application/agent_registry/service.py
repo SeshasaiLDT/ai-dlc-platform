@@ -19,9 +19,7 @@ class AgentRegistry:
         record = RegisteredAgent(
             manifest=manifest, revision=revision, updated_at=self._clock(), enabled=True
         )
-        self._repository.put(
-            record, expected_revision=current.revision if current else None
-        )
+        self._repository.put(record, expected_revision=current.revision if current else None)
         return record
 
     def get(self, agent_id: str) -> RegisteredAgent | None:
@@ -41,8 +39,5 @@ class AgentRegistry:
             if record.enabled
             and required_capabilities <= frozenset(record.manifest.capabilities)
             and record.manifest.permissions <= allowed_permissions
-            and (
-                include_unhealthy
-                or record.manifest.health.status not in {"unhealthy"}
-            )
+            and (include_unhealthy or record.manifest.health.status not in {"unhealthy"})
         )
