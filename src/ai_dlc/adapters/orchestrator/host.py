@@ -4,17 +4,26 @@ import importlib
 import json
 import os
 from dataclasses import dataclass
+from typing import Literal
 
 from pydantic import ValidationError
 
+from ai_dlc.application.agent_harness.models import ContractModel
 from ai_dlc.application.authentication import AuthenticationService, BearerCredential
 from ai_dlc.application.orchestrator.service import Orchestrator, SingleAgentRequest
+from ai_dlc.application.planning import PlanError, PlanningRequest, PlanningService
+
+
+class PlanInvocation(ContractModel):
+    operation: Literal["plan"]
+    request: PlanningRequest
 
 
 @dataclass(frozen=True)
 class Dependencies:
     authentication: AuthenticationService
     orchestrator: Orchestrator
+    planning: PlanningService | None = None
 
 
 class RuntimeApp:
@@ -52,12 +61,33 @@ class RuntimeApp:
                 try:
                     if len(data) > 1_048_576:
                         raise ValueError("payload too large")
-                    request = SingleAgentRequest.model_validate_json(bytes(data))
+                    payload = json.loads(bytes(data))
+                    if isinstance(payload, dict) and payload.get("operation") == "plan":
+                        request = PlanInvocation.model_validate(payload)
+                    else:
+                        request = SingleAgentRequest.model_validate(payload)
                 except (ValidationError, ValueError):
                     status, body = 400, {"error": "invalid_request"}
                 else:
-                    result = await self.dependencies.orchestrator.execute(request, principal)
-                    status, body = 200, result.model_dump(mode="json")
+                    if isinstance(request, PlanInvocation):
+                        if self.dependencies.planning is None:
+                            status, body = 503, {"error": "planning_not_configured"}
+                        else:
+                            try:
+                                result = self.dependencies.planning.accept(
+                                    request.request, principal
+                                )
+                                status, body = 200, result.model_dump(mode="json")
+                            except PlanError as error:
+                                status = 403 if error.code == "authorization_failed" else 409
+                                if error.code == "plan_persistence_failed":
+                                    status = 503
+                                body = {"error": error.code}
+                            except ValueError:
+                                status, body = 400, {"error": "invalid_plan"}
+                    else:
+                        result = await self.dependencies.orchestrator.execute(request, principal)
+                        status, body = 200, result.model_dump(mode="json")
         await send(
             {
                 "type": "http.response.start",
