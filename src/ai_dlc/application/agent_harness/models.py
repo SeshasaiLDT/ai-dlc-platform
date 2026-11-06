@@ -216,3 +216,7 @@ class ValidationResult(ContractModel):
         if self.valid == bool(self.errors):
             raise ValueError("valid must be true exactly when errors are empty")
         return self
+
+
+class DelegationTrackingError(RuntimeError):
+    """Durable tracking failed; transport must not hide this as a remote failure."""

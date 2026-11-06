@@ -262,9 +262,9 @@ def test_runtime_execute_plan_wiring(tmp_path):
             )
 
     response = asyncio.run(call())
-    assert response.status_code == 200
-    assert response.json()["outcome"] == "succeeded"
-    assert len(calls) == 2
+    assert response.status_code == 503
+    assert response.json()["error"] == "recovery_not_configured"
+    assert not calls
 
 
 def test_bounded_timeout_marks_failed_and_blocks_dependency(tmp_path):

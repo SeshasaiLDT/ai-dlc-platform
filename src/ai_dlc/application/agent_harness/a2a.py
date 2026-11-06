@@ -17,6 +17,8 @@ from a2a.server.tasks import TaskStore
 from a2a.types import (
     AgentCard,
     Artifact,
+    CancelTaskRequest,
+    GetTaskRequest,
     Message,
     Part,
     Role,
@@ -39,7 +41,14 @@ from google.protobuf.struct_pb2 import Struct, Value
 from httpx import HTTPStatusError
 
 from .lifecycle import LifecycleRunner
-from .models import AgentContext, ExecutionError, ExecutionResult, ExecutionStatus, Invocation
+from .models import (
+    AgentContext,
+    DelegationTrackingError,
+    ExecutionError,
+    ExecutionResult,
+    ExecutionStatus,
+    Invocation,
+)
 from .ports import AgentLifecycle
 
 _NAMESPACE = "ai_dlc"
@@ -146,7 +155,7 @@ class A2AClient:
         self._call_context_factory = call_context_factory
 
     async def delegate(
-        self, agent_id: str, request: Invocation, *, context: AgentContext
+        self, agent_id: str, request: Invocation, *, context: AgentContext, on_progress=None
     ) -> ExecutionResult:
         if not isinstance(request, Invocation) or not isinstance(context, AgentContext):
             raise TypeError("Invocation and trusted AgentContext required")
@@ -163,6 +172,8 @@ class A2AClient:
         if card is None:
             return _failure(context, ExecutionStatus.FAILED, "agent_not_found", "Agent unavailable")
         message_id = uuid4().hex
+        if on_progress is not None:
+            on_progress(message_id, None)
         lineage = {
             _NAMESPACE: {
                 "parent_task_id": context.task_id,
@@ -194,7 +205,10 @@ class A2AClient:
             call_context.timeout = remaining
             async with client:
                 async for response in client.send_message(wire, context=call_context):
-                    return self._parse(response, context)
+                    result = self._parse(response, context)
+                    if on_progress is not None:
+                        on_progress(message_id, (result.metadata or {}).get("remote_task_id"))
+                    return result
             return _failure(context, ExecutionStatus.FAILED, "protocol_error", "Empty A2A response")
 
         task = asyncio.create_task(exchange())
@@ -235,6 +249,8 @@ class A2AClient:
             )
         except asyncio.CancelledError:
             raise
+        except DelegationTrackingError:
+            raise
         except Exception as exc:
             if isinstance(exc, A2AClientTimeoutError):
                 return _failure(
@@ -273,6 +289,41 @@ class A2AClient:
                     pending.cancel()
             await asyncio.gather(
                 *(item for item in (task, cancellation) if item is not None), return_exceptions=True
+            )
+
+    async def control_task(self, agent_id, task_id, *, context, cancel=False):
+        """Official SDK task control; responses do not prove stopped side effects."""
+        card = self._directory.resolve(agent_id, context=context)
+        if card is None:
+            return _failure(context, ExecutionStatus.FAILED, "agent_not_found", "Agent unavailable")
+        try:
+            factory = self._factory or ClientFactory(ClientConfig(streaming=False)).create
+            client = factory(card)
+            call_context = self._call_context_factory(context)
+            if not isinstance(call_context, ClientCallContext):
+                raise TypeError("trusted transport context required")
+            call_context.timeout = _remaining(context, self._timeout)
+            async with asyncio.timeout(call_context.timeout), client:
+                task = await (
+                    client.cancel_task(CancelTaskRequest(id=task_id), context=call_context)
+                    if cancel
+                    else client.get_task(GetTaskRequest(id=task_id), context=call_context)
+                )
+            if task.id != task_id:
+                raise ValueError("remote task identity mismatch")
+            return self._parse(StreamResponse(task=task), context)
+        except asyncio.CancelledError:
+            raise
+        except (MethodNotFoundError, UnsupportedOperationError, NotImplementedError):
+            return _failure(
+                context,
+                ExecutionStatus.FAILED,
+                "unsupported_a2a_method",
+                "Task control unsupported",
+            )
+        except Exception:
+            return _failure(
+                context, ExecutionStatus.FAILED, "remote_unavailable", "Task control unavailable"
             )
 
     @staticmethod
