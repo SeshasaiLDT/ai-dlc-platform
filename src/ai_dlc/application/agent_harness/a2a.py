@@ -224,7 +224,15 @@ class A2AClient:
                     "Deadline exceeded",
                     metadata={"delegation_message_id": message_id},
                 )
-            return await task
+            result = await task
+            return result.model_copy(
+                update={
+                    "metadata": {
+                        **(result.metadata or {}),
+                        "delegation_message_id": message_id,
+                    }
+                }
+            )
         except asyncio.CancelledError:
             raise
         except Exception as exc:

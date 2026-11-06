@@ -12,6 +12,7 @@ from ai_dlc.application.agent_harness.models import ContractModel
 from ai_dlc.application.authentication import AuthenticationService, BearerCredential
 from ai_dlc.application.orchestrator.service import Orchestrator, SingleAgentRequest
 from ai_dlc.application.planning import PlanError, PlanningRequest, PlanningService
+from ai_dlc.application.workflow.executor import ExecutePlanRequest, WorkflowExecutor
 
 
 class PlanInvocation(ContractModel):
@@ -19,11 +20,17 @@ class PlanInvocation(ContractModel):
     request: PlanningRequest
 
 
+class ExecuteInvocation(ContractModel):
+    operation: Literal["execute_plan"]
+    request: ExecutePlanRequest
+
+
 @dataclass(frozen=True)
 class Dependencies:
     authentication: AuthenticationService
     orchestrator: Orchestrator
     planning: PlanningService | None = None
+    executor: WorkflowExecutor | None = None
 
 
 class RuntimeApp:
@@ -64,12 +71,30 @@ class RuntimeApp:
                     payload = json.loads(bytes(data))
                     if isinstance(payload, dict) and payload.get("operation") == "plan":
                         request = PlanInvocation.model_validate(payload)
+                    elif isinstance(payload, dict) and payload.get("operation") == "execute_plan":
+                        request = ExecuteInvocation.model_validate(payload)
                     else:
                         request = SingleAgentRequest.model_validate(payload)
                 except (ValidationError, ValueError):
                     status, body = 400, {"error": "invalid_request"}
                 else:
-                    if isinstance(request, PlanInvocation):
+                    if isinstance(request, ExecuteInvocation):
+                        if self.dependencies.executor is None:
+                            status, body = 503, {"error": "execution_not_configured"}
+                        else:
+                            try:
+                                result = await self.dependencies.executor.execute(
+                                    request.request, principal
+                                )
+                                status, body = 200, result.model_dump(mode="json")
+                            except PlanError as error:
+                                status = 403 if error.code == "authorization_failed" else 404
+                                if error.code == "plan_persistence_failed":
+                                    status = 503
+                                body = {"error": error.code}
+                            except ValueError:
+                                status, body = 400, {"error": "invalid_plan"}
+                    elif isinstance(request, PlanInvocation):
                         if self.dependencies.planning is None:
                             status, body = 503, {"error": "planning_not_configured"}
                         else:
