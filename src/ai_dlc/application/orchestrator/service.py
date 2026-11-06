@@ -20,7 +20,7 @@ from ai_dlc.application.agent_harness import (
     Invocation,
     create_agent_context,
 )
-from ai_dlc.application.agent_harness.models import ContractModel
+from ai_dlc.application.agent_harness.models import ContractModel, DelegationTrackingError
 from ai_dlc.application.agent_registry import AgentRegistryReader
 from ai_dlc.application.authorization import (
     AuthorizationRequest,
@@ -52,6 +52,9 @@ class DispatchLineage(ContractModel):
 class DispatchOutcome:
     result: ExecutionResult
     agent_id: str | None
+
+
+DispatchTrackingError = DelegationTrackingError
 
 
 class Orchestrator:
@@ -91,7 +94,18 @@ class Orchestrator:
         ).result
 
     async def dispatch(
-        self, request: SingleAgentRequest, principal: Principal, lineage: DispatchLineage
+        self,
+        request: SingleAgentRequest,
+        principal: Principal,
+        lineage: DispatchLineage,
+        *,
+        cancellation_event=None,
+        on_progress=None,
+        remote_task_id=None,
+        cancel_remote=False,
+        expected_agent=None,
+        expected_endpoint=None,
+        deadline=None,
     ) -> DispatchOutcome:
         """Shared trusted dispatch; lineage is supplied by application code, never wire grants."""
         request_id, trace_id = lineage.request_id, lineage.trace_id
@@ -135,7 +149,10 @@ class Orchestrator:
             request_id=request_id,
             correlation_id=lineage.correlation_id,
             trace_id=trace_id,
-            deadline=self.clock() + timedelta(seconds=self.timeout),
+            deadline=min(deadline, self.clock() + timedelta(seconds=self.timeout))
+            if deadline is not None
+            else self.clock() + timedelta(seconds=self.timeout),
+            cancellation_event=cancellation_event,
         )
         try:
             candidates = self.registry.discover(
@@ -159,7 +176,13 @@ class Orchestrator:
                 or request.capability.value not in manifest.capabilities
             ):
                 return failure("authorization_failed")
-            if not Draft202012Validator(manifest.input_schema).is_valid(request.invocation.input):
+            if remote_task_id is not None and (
+                manifest.agent_id != expected_agent or manifest.a2a_endpoint != expected_endpoint
+            ):
+                return failure("protocol_error")
+            if remote_task_id is None and not Draft202012Validator(manifest.input_schema).is_valid(
+                request.invocation.input
+            ):
                 return failure("invalid_request")
             card = AgentCard(
                 name=manifest.name,
@@ -177,10 +200,26 @@ class Orchestrator:
             )
             directory = ConfiguredAgentDirectory({manifest.agent_id: card}, lambda *_: True)
             client = self.transport_factory(directory)
+
+            def tracked(call_id, remote_id):
+                try:
+                    on_progress(call_id, remote_id, manifest.agent_id, manifest.a2a_endpoint)
+                except Exception:
+                    raise DispatchTrackingError from None
+
             async with asyncio.timeout(self.timeout):
-                result = await client.delegate(
-                    manifest.agent_id, request.invocation, context=context
-                )
+                if remote_task_id is not None:
+                    result = await client.control_task(
+                        manifest.agent_id, remote_task_id, context=context, cancel=cancel_remote
+                    )
+                elif on_progress is not None:
+                    result = await client.delegate(
+                        manifest.agent_id, request.invocation, context=context, on_progress=tracked
+                    )
+                else:
+                    result = await client.delegate(
+                        manifest.agent_id, request.invocation, context=context
+                    )
             if (result.request_id, result.correlation_id, result.trace_id) != (
                 context.request_id,
                 context.correlation_id,
@@ -193,6 +232,8 @@ class Orchestrator:
             ):
                 return failure("invalid_output", metadata=result.metadata)
             return DispatchOutcome(result, selected_agent)
+        except DispatchTrackingError:
+            raise
         except TimeoutError:
             return failure("deadline_exceeded", ExecutionStatus.TIMED_OUT)
         except Exception:

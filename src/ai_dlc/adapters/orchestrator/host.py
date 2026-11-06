@@ -13,6 +13,8 @@ from ai_dlc.application.authentication import AuthenticationService, BearerCrede
 from ai_dlc.application.orchestrator.service import Orchestrator, SingleAgentRequest
 from ai_dlc.application.planning import PlanError, PlanningRequest, PlanningService
 from ai_dlc.application.workflow.executor import ExecutePlanRequest, WorkflowExecutor
+from ai_dlc.application.workflow.recovery import RecoveryService
+from ai_dlc.application.workflow.recovery_models import ExecutionRequest, StartExecution
 
 
 class PlanInvocation(ContractModel):
@@ -25,12 +27,23 @@ class ExecuteInvocation(ContractModel):
     request: ExecutePlanRequest
 
 
+class StartInvocation(ContractModel):
+    operation: Literal["start_execution"]
+    request: StartExecution
+
+
+class ControlInvocation(ContractModel):
+    operation: Literal["execution_status", "resume_execution", "cancel_execution"]
+    request: ExecutionRequest
+
+
 @dataclass(frozen=True)
 class Dependencies:
     authentication: AuthenticationService
     orchestrator: Orchestrator
     planning: PlanningService | None = None
     executor: WorkflowExecutor | None = None
+    recovery: RecoveryService | None = None
 
 
 class RuntimeApp:
@@ -73,27 +86,77 @@ class RuntimeApp:
                         request = PlanInvocation.model_validate(payload)
                     elif isinstance(payload, dict) and payload.get("operation") == "execute_plan":
                         request = ExecuteInvocation.model_validate(payload)
+                    elif (
+                        isinstance(payload, dict) and payload.get("operation") == "start_execution"
+                    ):
+                        request = StartInvocation.model_validate(payload)
+                    elif isinstance(payload, dict) and payload.get("operation") in {
+                        "execution_status",
+                        "resume_execution",
+                        "cancel_execution",
+                    }:
+                        request = ControlInvocation.model_validate(payload)
                     else:
                         request = SingleAgentRequest.model_validate(payload)
                 except (ValidationError, ValueError):
                     status, body = 400, {"error": "invalid_request"}
                 else:
-                    if isinstance(request, ExecuteInvocation):
-                        if self.dependencies.executor is None:
-                            status, body = 503, {"error": "execution_not_configured"}
+                    if isinstance(request, (ExecuteInvocation, StartInvocation, ControlInvocation)):
+                        recovery = self.dependencies.recovery
+                        if recovery is None:
+                            status, body = 503, {"error": "recovery_not_configured"}
                         else:
                             try:
-                                result = await self.dependencies.executor.execute(
-                                    request.request, principal
+                                if isinstance(request, ExecuteInvocation):
+                                    admitted = recovery.start(
+                                        StartExecution(
+                                            plan_id=request.request.plan_id,
+                                            initiative_id=request.request.initiative_id,
+                                            idempotency_key=f"legacy.{request.request.plan_id}",
+                                        ),
+                                        principal,
+                                    )
+                                    result = await recovery.resume(
+                                        ExecutionRequest(
+                                            execution_id=admitted.execution_id,
+                                            initiative_id=admitted.initiative_id,
+                                        ),
+                                        principal,
+                                    )
+                                elif isinstance(request, StartInvocation):
+                                    result = recovery.start(request.request, principal)
+                                elif request.operation == "execution_status":
+                                    result = recovery.status(request.request, principal)
+                                elif request.operation == "cancel_execution":
+                                    result = await recovery.cancel(request.request, principal)
+                                else:
+                                    result = await recovery.resume(request.request, principal)
+                                status, body = (
+                                    200,
+                                    result.model_dump(
+                                        mode="json",
+                                        exclude={
+                                            "claim_token": True,
+                                            "steps": {
+                                                "__all__": {
+                                                    "attempts": {"__all__": {"endpoint": True}}
+                                                }
+                                            },
+                                        },
+                                    ),
                                 )
-                                status, body = 200, result.model_dump(mode="json")
                             except PlanError as error:
-                                status = 403 if error.code == "authorization_failed" else 404
-                                if error.code == "plan_persistence_failed":
+                                status = 403 if error.code == "authorization_failed" else 409
+                                if (
+                                    error.code.endswith("storage_failed")
+                                    or error.code == "plan_persistence_failed"
+                                ):
                                     status = 503
+                                if error.code.endswith("not_found"):
+                                    status = 404
                                 body = {"error": error.code}
                             except ValueError:
-                                status, body = 400, {"error": "invalid_plan"}
+                                status, body = 400, {"error": "invalid_execution"}
                     elif isinstance(request, PlanInvocation):
                         if self.dependencies.planning is None:
                             status, body = 503, {"error": "planning_not_configured"}

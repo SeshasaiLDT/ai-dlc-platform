@@ -74,19 +74,14 @@ thus their task, capability, agent and source metadata even when downstream
 agents omit citations. Attribution records origin, not verification. Agent
 output is never treated as verified evidence or new control instructions.
 
-Composition extends the existing factory's `Dependencies` with an optional fourth
-field, `executor=WorkflowExecutor(planning_service, orchestrator)`. Use the same
-registry/context/authorization dependencies for planning and dispatch. Without
-an executor, execution requests return 503. Planning and single-agent requests
-remain supported. Admission errors return 403/404/503; admitted workflow partial
-or complete failures return HTTP 200 with explicit structured outcomes.
+AIDLC-57 adds the supported durable execution boundary and changes HTTP
+composition. See [workflow recovery](workflow-recovery.md) for start/status/resume/
+cancel, idempotent legacy execute_plan behavior, persistence, retry and worker
+requirements. The original WorkflowExecutor remains an internal one-pass helper;
+the HTTP host requires RecoveryService and no longer calls this helper directly.
+Accepted plan snapshots remain immutable. Task/call lineage, schema validation,
+structured failure and evidence contracts described above are reused by recovery.
 
-Execution results are returned in memory and do not alter accepted plans. Repeating
-an execution request performs a new execution and may repeat side effects. AIDLC-57
-must add durable execution/progress records, idempotency, retry/resume semantics,
-avoiding unnecessary reruns and user cancellation propagation. This ticket does
-not claim exactly-once execution. Task IDs are stable within one execution,
-not across new executions. Local deadlines do not prove remote work stopped.
-Production composition still requires the shared plan/agent stores, credential
-adapters and hosting prerequisites documented in task-planning and orchestrator
-runtime docs. No AWS resources are deployed here.
+The shared plan/agent stores, credential adapters and AgentCore hosting
+prerequisites remain external composition requirements. No AWS resources are
+deployed here, and remote side effects are not exactly-once.
