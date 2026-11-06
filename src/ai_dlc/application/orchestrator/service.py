@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -39,6 +40,20 @@ class SingleAgentRequest(ContractModel):
     invocation: Invocation
 
 
+class DispatchLineage(ContractModel):
+    request_id: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+    trace_id: str = Field(min_length=1)
+    task_id: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+
+
+@dataclass(frozen=True)
+class DispatchOutcome:
+    result: ExecutionResult
+    agent_id: str | None
+
+
 class Orchestrator:
     def __init__(
         self,
@@ -60,15 +75,39 @@ class Orchestrator:
         self.clock = clock
 
     async def execute(self, request: SingleAgentRequest, principal: Principal) -> ExecutionResult:
-        request_id, trace_id = uuid4().hex, uuid4().hex
+        request_id = uuid4().hex
+        return (
+            await self.dispatch(
+                request,
+                principal,
+                DispatchLineage(
+                    request_id=request_id,
+                    correlation_id=request_id,
+                    trace_id=uuid4().hex,
+                    task_id=uuid4().hex,
+                    session_id=request_id,
+                ),
+            )
+        ).result
 
-        def failure(code, status=ExecutionStatus.FAILED):
-            return ExecutionResult(
-                status=status,
-                request_id=request_id,
-                correlation_id=request_id,
-                trace_id=trace_id,
-                error=ExecutionError(code=code, message=code),
+    async def dispatch(
+        self, request: SingleAgentRequest, principal: Principal, lineage: DispatchLineage
+    ) -> DispatchOutcome:
+        """Shared trusted dispatch; lineage is supplied by application code, never wire grants."""
+        request_id, trace_id = lineage.request_id, lineage.trace_id
+        selected_agent = None
+
+        def failure(code, status=ExecutionStatus.FAILED, *, metadata=None):
+            return DispatchOutcome(
+                ExecutionResult(
+                    status=status,
+                    request_id=request_id,
+                    correlation_id=lineage.correlation_id,
+                    trace_id=trace_id,
+                    error=ExecutionError(code=code, message=code),
+                    metadata=metadata,
+                ),
+                selected_agent,
             )
 
         try:
@@ -77,7 +116,7 @@ class Orchestrator:
                     principal=principal,
                     initiative_id=request.initiative_id,
                     environment="runtime",
-                    correlation_id=request_id,
+                    correlation_id=lineage.correlation_id,
                 )
             )
             self.authorization.require(
@@ -90,10 +129,11 @@ class Orchestrator:
         except Exception:
             return failure("authorization_failed")
         context = create_agent_context(
-            task_id=uuid4().hex,
+            task_id=lineage.task_id,
+            session_id=lineage.session_id,
             authorization=trusted.resolution.authorization,
             request_id=request_id,
-            correlation_id=request_id,
+            correlation_id=lineage.correlation_id,
             trace_id=trace_id,
             deadline=self.clock() + timedelta(seconds=self.timeout),
         )
@@ -109,6 +149,7 @@ class Orchestrator:
             if len(candidates) != 1:
                 return failure("ambiguous_agent")
             manifest = candidates[0].manifest
+            selected_agent = manifest.agent_id
             # Discovery metadata is not authority; independently enforce its requirements.
             if not candidates[0].enabled or manifest.health.status == "unhealthy":
                 return failure("agent_not_found")
@@ -145,8 +186,13 @@ class Orchestrator:
                 context.correlation_id,
                 context.trace_id,
             ):
-                return failure("protocol_error")
-            return result
+                return failure("protocol_error", metadata=result.metadata)
+            if result.status is ExecutionStatus.SUCCEEDED and (
+                result.output is None
+                or not Draft202012Validator(manifest.output_schema).is_valid(result.output)
+            ):
+                return failure("invalid_output", metadata=result.metadata)
+            return DispatchOutcome(result, selected_agent)
         except TimeoutError:
             return failure("deadline_exceeded", ExecutionStatus.TIMED_OUT)
         except Exception:
